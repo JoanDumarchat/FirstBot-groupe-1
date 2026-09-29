@@ -6,6 +6,9 @@ WHEEL_SPACING = 15.0 # cm
 WHEEL_DIAMETER = 5.16
 WHEEL_RADIUS = WHEEL_DIAMETER / 2
 WHEEL_CIRC = 2 * math.pi * WHEEL_RADIUS
+ROBOT_ROTATE_CIRC = 2 * math.pi * (WHEEL_DIAMETER / 2)
+
+WHEEL_MODIFIER = [1, -1]
 
 
 def get_turn_radius(wheel_speed) -> float :
@@ -17,11 +20,13 @@ def get_turn_speed (wheel_speed) -> float :
     return (wheel_speed[0] - wheel_speed[1]) / WHEEL_SPACING
 
 def move_forward (wheels_io, wheel_ids, distance):
-    wheels_io.set_moving_speed({mid: 360 for mid in wheel_ids})
+    wheels_io.set_moving_speed({mid: 360*WHEEL_MODIFIER[mid-1] for mid in wheel_ids})
     time.sleep(distance / WHEEL_CIRC)
     return
 
-def rotate_center (wheels_io, wheels_ids):
+def rotate_center (wheels_io, wheel_ids, angle):
+    wheels_io.set_moving_speed({mid: 360 for mid in wheel_ids})
+    time.sleep(ROBOT_ROTATE_CIRC / (angle / 360) / WHEEL_CIRC)
     return
 
 def main():
@@ -39,7 +44,7 @@ def main():
     else :
         dxl_io.set_wheel_mode(found_ids)
         
-        move_forward (dxl_io, found_ids, 10)
+        rotate_center (dxl_io, found_ids, 360)
 
         dxl_io.set_moving_speed({mid: 0 for mid in found_ids})
         #dxl_io.disable_torque(found_ids)
