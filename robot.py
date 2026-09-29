@@ -1,15 +1,28 @@
 import pypot.dynamixel
 import time
+import math
 
 WHEEL_SPACING = 15.0 # cm
+WHEEL_DIAMETER = 5.16
+WHEEL_RADIUS = WHEEL_DIAMETER / 2
+WHEEL_CIRC = 2 * math.pi * WHEEL_RADIUS
 
-def get_turn_radius(wheel_speed) :
+
+def get_turn_radius(wheel_speed) -> float :
     if (wheel_speed[1] - wheel_speed[0] == 0):
         return 0
     return (wheel_speed[0] * (WHEEL_SPACING/2)) / (wheel_speed[1] - wheel_speed[0])  
 
-def get_turn_speed (wheel_speed):
+def get_turn_speed (wheel_speed) -> float :
     return (wheel_speed[0] - wheel_speed[1]) / WHEEL_SPACING
+
+def move_forward (wheels_io, wheel_ids, distance):
+    wheels_io.set_moving_speed({mid: 360 for mid in wheel_ids})
+    time.sleep(distance / WHEEL_CIRC)
+    return
+
+def rotate_center (wheels_io, wheels_ids):
+    return
 
 def main():
     ports = pypot.dynamixel.get_available_ports()
@@ -25,15 +38,11 @@ def main():
         print("Port opened, but no motors responded. Check batteries")
     else :
         dxl_io.set_wheel_mode(found_ids)
-        while (1):
-            print(get_turn_radius(dxl_io.get_present_speed(found_ids)), get_turn_speed(dxl_io.get_present_speed(found_ids)))
-        print(dxl_io.get_control_table(found_ids))
-
-        dxl_io.set_moving_speed({mid: 360 for mid in found_ids})
-        time.sleep(1)
+        
+        move_forward (dxl_io, found_ids, 10)
 
         dxl_io.set_moving_speed({mid: 0 for mid in found_ids})
-        dxl_io.disable_torque(found_ids)
+        #dxl_io.disable_torque(found_ids)
 
 
 if __name__ == '__main__':
