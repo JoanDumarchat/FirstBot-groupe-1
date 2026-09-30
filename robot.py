@@ -1,6 +1,5 @@
 import time
 import math
-import numpy as np
 
 
 class Robot:
@@ -9,7 +8,7 @@ class Robot:
     WHEEL_DIAMETER = 5.16
     WHEEL_RADIUS = WHEEL_DIAMETER / 2
     WHEEL_CIRC = 2 * math.pi * WHEEL_RADIUS
-    WHEEL_MODIFIER = [1, -1]
+    WHEEL_MODIFIER = {1 : 1, 2 : -1}
 
     ROBOT_ROTATE_CIRC = 2 * math.pi * (WHEEL_SPACING / 2)
 
@@ -19,7 +18,8 @@ class Robot:
         self.x = 0.
         self.y = 0.
         self.teta = 0.
-       
+
+    ########## GETTERS ##########
        
     def get_turn_radius(self, wheel_speed) -> float :
         if (wheel_speed[1] - wheel_speed[0] == 0):
@@ -29,16 +29,7 @@ class Robot:
     def get_turn_speed (self, wheel_speed) -> float :
         return (wheel_speed[0] - wheel_speed[1]) / self.WHEEL_SPACING
 
-    def move_forward (self, distance):
-        self.wheels_io.set_moving_speed({mid: 360*self.WHEEL_MODIFIER[mid-1] for mid in self.wheel_ids})
-        time.sleep(distance / self.WHEEL_CIRC)
-        return
-
-
-    def rotate_center (self, angle):
-        self.wheels_io.set_moving_speed({mid: 360 for mid in self.wheel_ids})
-        time.sleep((self.ROBOT_ROTATE_CIRC / (angle / 180)) / self.WHEEL_CIRC)
-        return
+    ### ODOMETRY ###
 
     def odom (self,x_dot, theta_dot, dt):
         dx=x_dot*np.cos(theta_dot)*dt
@@ -46,3 +37,19 @@ class Robot:
         d_theta=dt*theta_dot
         
         return dx,dy,d_theta
+
+    ##########  MOVE ROBOT ##########
+
+    def move_forward (self, distance):
+        self.wheels_io.set_moving_speed({mid: 360*self.WHEEL_MODIFIER[mid-1] for mid in self.wheel_ids})
+        time.sleep(distance / self.WHEEL_CIRC)
+        return
+
+    def rotate_center (self, angle):
+        self.wheels_io.set_moving_speed({mid: 360 for mid in self.wheel_ids})
+        time.sleep((self.ROBOT_ROTATE_CIRC / (angle / 180)) / self.WHEEL_CIRC)
+        return
+
+    def stop (self):
+        self.wheels_io.set_moving_speed({mid: 0 for mid in self.wheel_ids})
+        return
