@@ -1,5 +1,6 @@
 import time
 import math
+import numpy as np
 
 
 class Robot:
@@ -39,3 +40,9 @@ class Robot:
         time.sleep((self.ROBOT_ROTATE_CIRC / (angle / 180)) / self.WHEEL_CIRC)
         return
 
+    def odom (self,x_dot, theta_dot, dt):
+        dx=x_dot*np.cos(theta_dot)*dt
+        dy=x_dot*np.sin(theta_dot)*dt
+        d_theta=dt*theta_dot
+        
+        return dx,dy,d_theta
