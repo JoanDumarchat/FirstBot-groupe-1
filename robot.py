@@ -105,9 +105,13 @@ class Robot:
         self.wheels_io.set_moving_speed({mid: speed*self.WHEEL_MODIFIER[mid] for mid in self.wheel_ids})
 
     def rotate_center_d (self, angle):
-        self.wheels_io.set_moving_speed({mid: 360 for mid in self.wheel_ids})
-        time.sleep((self.ROBOT_ROTATE_CIRC / (angle / 180)) / self.WHEEL_CIRC)
-        return
+        sign = 1 if angle >= 0 else -1
+        cmd = {mid: sign * self.WHEEL_SPEED for mid in self.wheel_ids}
+        v, omega = self.set_wheel_speeds(cmd)
+        dt = (self.ROBOT_ROTATE_CIRC * ( sign * angle ) / 360) / self.WHEEL_CIRC
+        time.sleep(dt)
+        self.stop()
+        self.update_pose(v, omega, dt)
 
     def rotate_center_s (self, speed):
         self.wheels_io.set_moving_speed({mid: speed for mid in self.wheel_ids})
@@ -121,3 +125,21 @@ class Robot:
         return x 
 
     ### GO TO ###
+
+    def go_to_xya(self, x, y, theta):
+        dx = x - self.x
+        dy = y - self.y
+        distance = np.hypot(dx, dy)
+
+        if distance > self.POS_TOL:
+            heading = np.degrees(np.arctan2(dy, dx))
+
+            turn = normalize_angle(heading - self.teta)
+            if abs(turn) > self.ANGLE_TOL:
+                self.rotate_center_d(turn)
+
+            self.move_forward_d(distance)
+
+        turn = normalize_angle(theta - self.teta)
+        if abs(turn) > self.ANGLE_TOL:
+            self.rotate_center_d(turn)
