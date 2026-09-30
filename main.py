@@ -18,21 +18,10 @@ def main():
         robot = Robot(dxl_io, found_ids)
         robot.wheels_io.set_wheel_mode(found_ids)
        
+        input()
+        
+        robot.stop()
 
-        while (True):
-            if keyboard.is_pressed('z'):
-                robot.move_forward_s (360)
-            elif keyboard.is_pressed('s'):
-                robot.move_forward_s (-360)
-            elif keyboard.is_pressed('q'):
-                robot.rotate_center_s(360)
-            elif keyboard.is_pressed('d'):
-                robot.rotate_center_s(-360)
-            else:
-                robot.stop()
-
-            if keyboard.is_pressed('esc'):
-                break
 
         robot.wheels_io.disable_torque(found_ids)
 

@@ -33,15 +33,6 @@ class Robot:
         self.teta = 0.
 
     ########## GETTERS ##########
-       
-    def get_turn_radius(self, wheel_speed) -> float :
-        if (wheel_speed[1] - wheel_speed[0] == 0):
-            return 0
-        return (wheel_speed[0] * (self.WHEEL_SPACING/2)) / (wheel_speed[1] - wheel_speed[0])
-
-    def get_turn_speed (self, wheel_speed) -> float :
-        return (wheel_speed[0] - wheel_speed[1]) / self.WHEEL_SPACING
-
     ### Kinematics ### 
     
     """Vitesses des roues (rad/s) -> (v en cm/s, omega en rad/s).""" 
