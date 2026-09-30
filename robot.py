@@ -1,6 +1,6 @@
 import time
 import math
-
+import cv2
 import numpy as np
 
 ### Evite les grands tours inutiles ###
@@ -18,6 +18,8 @@ class Robot:
     WHEEL_CIRC = 2 * math.pi * WHEEL_RADIUS
     WHEEL_MODIFIER = {1 : -1, 2 : 1}
     WHEEL_SPEED = 360
+    LOCAL = [(0.0, 0.0), (0.0, -0.04), (0.0295, -0.0055), (0.0295, -0.0305)]
+    PIXELS = [(34, 179), (308, 176), (74, 72), (206, 65)]
 
     ROBOT_ROTATE_CIRC = 2 * math.pi * (WHEEL_SPACING / 2)
   
@@ -34,7 +36,6 @@ class Robot:
 
     ########## GETTERS ##########
     ### Kinematics ### 
-    
     """Vitesses des roues (rad/s) -> (v en cm/s, omega en rad/s).""" 
     def direct_kinematics(self, v_left, v_right): 
         r = self.WHEEL_RADIUS 
@@ -42,7 +43,6 @@ class Robot:
         v = (r / 2) * (v_right + v_left) 
         omega = (r / L) * (v_right - v_left) 
         return v, omega
-        
     """(v en cm/s, omega en rad/s) -> vitesses des roues (gauche, droite) en rad/s.""" 
     def inverse_kinematics(self, v, omega): 
         r = self.WHEEL_RADIUS 
@@ -59,7 +59,6 @@ class Robot:
         d_theta = theta_dot * dt
 
         return dx, dy, d_theta
-
     def tick_odom(self, x ,y ,theta , x_dot, theta_dot, dt):
         dx, dy, d_theta = self.odom(x_dot,theta_dot,dt)
         xn= dx * np.cos(np.radians(theta)) +x
@@ -112,3 +111,20 @@ class Robot:
         return x 
 
     ### GO TO ###
+
+
+    ## Pixel to robot / to world
+
+    TX = 0.104  # milieu des roues -> croix proche gauche, vers l'avant
+    TY = 0.01   # milieu des roues -> croix proche gauche, sur le côté
+
+    H, _ = cv2.findHomography(np.float32(PIXELS), np.float32(LOCAL))
+
+    def pixel_to_robot(self, x, y):
+        p = self.H @ [x, y, 1]
+        return p[0] / p[2] + self.TX, p[1] / p[2] + self.TY
+
+    def pixel_to_world(self, x, y):
+        xr, yr = self.pixel_to_robot(x, y)
+        return (self.x + xr * math.cos(self.teta) - yr * math.sin(self.teta),
+                self.y + xr * math.sin(self.teta) + yr * math.cos(self.teta))
