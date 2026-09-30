@@ -31,12 +31,12 @@ class Robot:
 
     ### ODOMETRY ###
 
-    def odom (self,x_dot, theta_dot, dt):
-        dx=x_dot*np.cos(theta_dot)*dt
-        dy=x_dot*np.sin(theta_dot)*dt
-        d_theta=dt*theta_dot
-        
-        return dx,dy,d_theta
+    def odom(self, x_dot, theta_dot, dt):
+        dx = x_dot * dt
+        dy = 0.0
+        d_theta = theta_dot * dt
+
+        return dx, dy, d_theta
 
     ##########  MOVE ROBOT ##########
 
