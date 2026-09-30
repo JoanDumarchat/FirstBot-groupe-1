@@ -6,11 +6,11 @@ import numpy as np
 
 class Robot:
 
-    WHEEL_SPACING = 15.0 # cm
+    WHEEL_SPACING = 13.0 # cm
     WHEEL_DIAMETER = 5.16
     WHEEL_RADIUS = WHEEL_DIAMETER / 2
     WHEEL_CIRC = 2 * math.pi * WHEEL_RADIUS
-    WHEEL_MODIFIER = {1 : 1, 2 : -1}
+    WHEEL_MODIFIER = {1 : -1, 2 : 1}
 
     ROBOT_ROTATE_CIRC = 2 * math.pi * (WHEEL_SPACING / 2)
 
@@ -76,9 +76,13 @@ class Robot:
     def move_forward_s (self, speed):
         self.wheels_io.set_moving_speed({mid: speed*self.WHEEL_MODIFIER[mid] for mid in self.wheel_ids})
 
-    def rotate_center (self, angle):
+    def rotate_center_d (self, angle):
         self.wheels_io.set_moving_speed({mid: 360 for mid in self.wheel_ids})
         time.sleep((self.ROBOT_ROTATE_CIRC / (angle / 180)) / self.WHEEL_CIRC)
+        return
+
+    def rotate_center_s (self, speed):
+        self.wheels_io.set_moving_speed({mid: speed for mid in self.wheel_ids})
         return
 
     def stop (self):
