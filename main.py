@@ -1,5 +1,5 @@
 import pypot.dynamixel
-import keyboard
+from odometry import record_movements
 from robot import Robot
 
 def main():
@@ -18,10 +18,11 @@ def main():
         robot = Robot(dxl_io, found_ids)
         robot.wheels_io.set_wheel_mode(found_ids)
        
-        input()
+        # input()
         
-        robot.stop()
+        # robot.stop()
 
+        print(record_movements(robot))
 
         robot.wheels_io.disable_torque(found_ids)
 

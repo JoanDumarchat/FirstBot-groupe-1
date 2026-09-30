@@ -29,4 +29,4 @@ def record_movements (robot : Robot):
 
     except KeyboardInterrupt:
         print("\nStopped recording.")
-        return robot.x, robot.y, robot.teta
+        return robot.x, robot.y, np.rad2deg(robot.teta)
