@@ -18,11 +18,11 @@ def main():
         robot = Robot(dxl_io, found_ids)
         robot.wheels_io.set_wheel_mode(found_ids)
        
-        robot.move_forward_s (360)
+        input()
+        
+        robot.stop()
 
-        keyboard.wait('esc')
 
-        robot.stop
         robot.wheels_io.disable_torque(found_ids)
 
 
