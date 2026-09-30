@@ -54,15 +54,18 @@ class Robot:
     ### ODOMETRY ###
 
     def odom(self, x_dot, theta_dot, dt):
-        dx = x_dot * dt
-        dy = 0.0
         d_theta = theta_dot * dt
-
+        if abs(theta_dot) < 1e-6:
+            return x_dot * dt, 0.0, d_theta
+        r = x_dot / theta_dot
+        dx = r * np.sin(d_theta)
+        dy = r * (1 - np.cos(d_theta))
         return dx, dy, d_theta
+
     def tick_odom(self, x ,y ,theta , x_dot, theta_dot, dt):
         dx, dy, d_theta = self.odom(x_dot,theta_dot,dt)
-        xn= dx * np.cos(np.radians(theta)) +x
-        yn= dx * np.sin(np.radians(theta)) +y
+        xn = x + dx * np.cos(theta) - dy * np.sin(theta)
+        yn = y + dx * np.sin(theta) + dy * np.cos(theta)
         theta_n = d_theta + theta
 
         return xn ,yn , theta_n

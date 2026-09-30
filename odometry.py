@@ -4,7 +4,7 @@ from robot import Robot
 
 def record_movements (robot : Robot):
     loop_freq = 50.0
-    sleep_time = 1.0 / 50.0
+    sleep_time = 1.0 / loop_freq
 
     last_time = time.perf_counter()
     try:
@@ -14,8 +14,8 @@ def record_movements (robot : Robot):
             last_time = current_time
 
             wheels_speed = robot.wheels_io.get_present_speed(robot.wheel_ids)
-            v_left = np.radians(wheels_speed[0])
-            v_right = np.radians(wheels_speed[1])
+            v_left = np.radians(wheels_speed[0]) * robot.WHEEL_MODIFIER[2]
+            v_right = np.radians(wheels_speed[1]) * robot.WHEEL_MODIFIER[1]
 
             linear_speed, angular_speed = robot.direct_kinematics(v_left, v_right)
 
