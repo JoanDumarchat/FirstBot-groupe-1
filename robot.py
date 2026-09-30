@@ -40,10 +40,13 @@ class Robot:
 
     ##########  MOVE ROBOT ##########
 
-    def move_forward (self, distance):
+    def move_forward_d (self, distance):
         self.wheels_io.set_moving_speed({mid: 360*self.WHEEL_MODIFIER[mid-1] for mid in self.wheel_ids})
         time.sleep(distance / self.WHEEL_CIRC)
         return
+
+    def move_forward_s (self, speed):
+        self.wheels_io.set_moving_speed({mid: speed*self.WHEEL_MODIFIER[mid-1] for mid in self.wheel_ids})
 
     def rotate_center (self, angle):
         self.wheels_io.set_moving_speed({mid: 360 for mid in self.wheel_ids})

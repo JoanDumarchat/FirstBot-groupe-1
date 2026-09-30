@@ -1,4 +1,5 @@
 import pypot.dynamixel
+import keyboard
 from robot import Robot
 
 def main():
@@ -17,7 +18,11 @@ def main():
         robot = Robot(dxl_io, found_ids)
         robot.wheels_io.set_wheel_mode(found_ids)
        
-        robot.rotate_center (360)
+        robot.move_forward_s (360)
+
+        keyboard.wait('esc')
+
+        robot.stop
         robot.wheels_io.disable_torque(found_ids)
 
 
