@@ -1,6 +1,8 @@
 import time
 import math
 
+import numpy as np
+
 
 class Robot:
 
@@ -29,6 +31,24 @@ class Robot:
     def get_turn_speed (self, wheel_speed) -> float :
         return (wheel_speed[0] - wheel_speed[1]) / self.WHEEL_SPACING
 
+    ### Kinematics ### 
+    
+    """Vitesses des roues (rad/s) -> (v en cm/s, omega en rad/s).""" 
+    def direct_kinematics(self, v_left, v_right): 
+        r = self.WHEEL_RADIUS 
+        L = self.WHEEL_SPACING 
+        v = (r / 2) * (v_right + v_left) 
+        omega = (r / L) * (v_right - v_left) 
+        return v, omega
+        
+    """(v en cm/s, omega en rad/s) -> vitesses des roues (gauche, droite) en rad/s.""" 
+    def inverse_kinematics(self, v, omega): 
+        r = self.WHEEL_RADIUS 
+        L = self.WHEEL_SPACING 
+        v_right = (2 * v + L * omega) / (2 * r) 
+        v_left = (2 * v - L * omega) / (2 * r) 
+        return v_left, v_right
+
     ### ODOMETRY ###
 
     def odom(self, x_dot, theta_dot, dt):
@@ -37,6 +57,14 @@ class Robot:
         d_theta = theta_dot * dt
 
         return dx, dy, d_theta
+
+    def tick_odom(self, x ,y ,theta , x_dot, theta_dot, dt):
+        dx, dy, d_theta = self.odom(x_dot,theta_dot,dt)
+        xn= dx * np.cos(theta) +x
+        yn= dx * np.sin(theta) +y
+        theta_n =d_theta*dt +theta
+
+        return xn ,yn , theta_n
 
     ##########  MOVE ROBOT ##########
 
