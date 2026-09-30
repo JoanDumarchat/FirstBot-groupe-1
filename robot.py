@@ -1,6 +1,8 @@
 import time
 import math
 
+import numpy as np
+
 
 class Robot:
 
@@ -55,6 +57,14 @@ class Robot:
         d_theta = theta_dot * dt
 
         return dx, dy, d_theta
+
+    def tick_odom(self, x ,y ,theta , x_dot, theta_dot, dt):
+        dx, dy, d_theta = self.odom(x_dot,theta_dot,dt)
+        xn= dx * np.cos(theta) +x
+        yn= dx * np.sin(theta) +y
+        theta_n =d_theta*dt +theta
+
+        return xn ,yn , theta_n
 
     ##########  MOVE ROBOT ##########
 
