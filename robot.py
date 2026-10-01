@@ -113,9 +113,6 @@ class Robot:
     def stop (self):
         self.wheels_io.set_moving_speed({mid: 0 for mid in self.wheel_ids})
         return
-    
-    def pixel_to_robot(x, y):
-        return x 
 
     ### GO TO ###
 
