@@ -18,9 +18,6 @@ class Robot:
     WHEEL_CIRC = 2 * math.pi * WHEEL_RADIUS
     WHEEL_MODIFIER = {1 : -1, 2 : 1}
     WHEEL_SPEED = 360
-    WHEEL_LEFT_ID = 2
-    WHEEL_RIGHT_ID = 1
-
     LOCAL = [(0.0, 0.0), (0.0, -0.04), (0.0295, -0.0055), (0.0295, -0.0305)]
     PIXELS = [(34, 179), (308, 176), (74, 72), (206, 65)]
 
@@ -46,7 +43,6 @@ class Robot:
         v = (r / 2) * (v_right + v_left) 
         omega = (r / L) * (v_right - v_left) 
         return v, omega
-    
     """(v en cm/s, omega en rad/s) -> vitesses des roues (gauche, droite) en rad/s.""" 
     def inverse_kinematics(self, v, omega): 
         r = self.WHEEL_RADIUS 
@@ -115,6 +111,25 @@ class Robot:
         turn_angle = - float(consigne_deg)
         self.drive(distance=distance, angle=turn_angle)
 
+    def move_d (self, distance, angle):
+        if angle != 0:
+            sign = 1 if angle >= 0 else -1
+            cmd = {mid: sign * self.WHEEL_SPEED for mid in self.wheel_ids}
+            v, omega = self.set_wheel_speeds(cmd)
+            dt = (self.ROBOT_ROTATE_CIRC * ( sign * angle ) / 360) / self.WHEEL_CIRC
+            time.sleep(dt)
+            self.stop()
+            self.update_pose(v, omega, dt)
+
+        if distance != 0:
+            sign = 1 if distance >= 0 else -1
+            cmd = {mid: sign * self.WHEEL_SPEED * self.WHEEL_MODIFIER[mid] for mid in self.wheel_ids}
+            v, omega = self.set_wheel_speeds(cmd)
+            dist = sign * distance / self.WHEEL_CIRC
+            time.sleep(dist)
+            self.stop()
+            self.update_pose(v, omega, dist)
+
 
     def move_s (self, linear_speed, angular_speed):
         corrected_linear_speed = linear_speed * np.cos(np.min(np.abs(angular_speed), 90))
@@ -122,13 +137,10 @@ class Robot:
         self.wheel_io.set_moving_speed({self.WHEEL_LEFT_ID : v_left})
         self.wheel_io.set_moving_speed({self.WHEEL_RIGHT_ID : v_right})
 
-        return
-
     def stop (self):
         self.wheels_io.set_moving_speed({mid: 0 for mid in self.wheel_ids})
         return
     
-
     ### GO TO ###
 
     def go_to_xya(self, x, y, theta):
@@ -138,13 +150,13 @@ class Robot:
 
         if distance > self.POSITION_TOL:
             heading = np.degrees(np.arctan2(dy, dx))
-
+ 
             turn = normalize_angle(heading - self.theta)
-            if abs(turn) > self.ANGLE_TOL:
-                self.move_d(0.0, turn)
-
-            self.move_d(distance, 0.0)
-
+            if abs(turn) <= self.ANGLE_TOL:
+                turn = 0.0
+ 
+            self.move_d(distance, turn)     # tourne vers la cible, puis avance
+ 
         turn = normalize_angle(theta - self.theta)
         if abs(turn) > self.ANGLE_TOL:
             self.move_d(0.0, turn)
