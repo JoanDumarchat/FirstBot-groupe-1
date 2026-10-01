@@ -296,3 +296,39 @@ class LineFollower:
             status_str = f"[{target} PERDUE] Arrêt"
 
         return self.last_consigne, is_active, status_str
+
+
+def detect_line(bgr, color):
+    """
+    Fonction de détection de ligne isolée pour la rétrocompatibilité (ex: carte.py).
+    Retourne : (detected, consigne, angle, offset)
+    """
+    h, w = bgr.shape[:2]
+    base_x = int(w / 2.0)
+    base_y = int(h)
+
+    mask = get_color_mask(bgr, color)
+    kernel = np.ones((3, 3), np.uint8)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5)))
+
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    valid = [c for c in contours if cv2.contourArea(c) >= 120]
+    if not valid:
+        return False, 0.0, 0.0, 0.0
+
+    valid.sort(key=lambda c: cv2.contourArea(c), reverse=True)
+    M = cv2.moments(valid[0])
+    if M['m00'] < 1.0:
+        return False, 0.0, 0.0, 0.0
+
+    cx = int(M['m10'] / M['m00'])
+    cy = int(M['m01'] / M['m00'])
+    dx = cx - base_x
+    dy = max(base_y - cy, 10.0)
+    angle = float(np.degrees(np.arctan2(dx, dy)))
+    offset = float(cx - base_x)
+    norm_offset = offset / (w / 2.0)
+    consigne = float(np.clip(norm_offset * 30.0 + 0.6 * angle, -40.0, 40.0))
+
+    return True, consigne, angle, offset
