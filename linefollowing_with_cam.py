@@ -3,7 +3,6 @@ import numpy as np
 import time
 
 PATH_ORDER = ["DEPART", "JAUNE", "BLEU", "ROUGE", "FIN"]
-CYCLE_ORDER = ["VERT", "JAUNE", "BLEU", "ROUGE"]
 
 
 def get_color_mask(bgr, color):
@@ -69,7 +68,7 @@ def check_green_present(bgr):
 class LineFollower:
     GREEN_COOLDOWN_SECONDS = 7.0
     CORRIDOR_HALF_WIDTH = 45  # Demi-largeur du couloir de suivi axiale (px)
-    REQUIRED_GREEN_FRAMES = 3  # Exige 15 images consécutives avec du vert
+    REQUIRED_GREEN_FRAMES = 5
 
     def __init__(self, initial_target="VERT"):
         self.seq_idx = 0  # 0: DEPART, 1: JAUNE, 2: BLEU, 3: ROUGE, 4: FIN
@@ -129,11 +128,6 @@ class LineFollower:
         self.advance_to_next_target(time.time())
         return self.current_target
 
-    def reset_steering(self):
-        self.last_consigne = 0.0
-        self.current_angle = 0.0
-        self.tracked_line_x = None
-
     def process_frame(self, frame, current_time_sec=None):
         if current_time_sec is None:
             current_time_sec = time.time()
@@ -143,14 +137,12 @@ class LineFollower:
         base_x = int(w / 2.0)
         base_y = int(h)
 
-        # Détection du vert avec compteur de confirmation sur N images consécutives
         is_green_this_frame = check_green_present(frame)
         if is_green_this_frame:
             self.green_consecutive_frames += 1
         else:
             self.green_consecutive_frames = 0
 
-        # 0. ÉTAT DE DÉPART : Attend le vert initial confirmé sur 3 images pour partir sur JAUNE
         if target == "DEPART":
             if self.green_consecutive_frames >= self.REQUIRED_GREEN_FRAMES:
                 self.advance_to_next_target(current_time_sec)
@@ -159,7 +151,7 @@ class LineFollower:
             if target == "DEPART":
                 return 0.0, False, f"[DEPART] En attente du vert ({self.green_consecutive_frames}/{self.REQUIRED_GREEN_FRAMES})..."
 
-        # 1. TRANSITION VERTE EN COURS (après cooldown 7s, confirmé sur 3 images)
+        # pour la transi verte
         if current_time_sec >= self.green_cooldown_until_sec:
             if self.green_consecutive_frames >= self.REQUIRED_GREEN_FRAMES:
                 self.advance_to_next_target(current_time_sec)
@@ -172,7 +164,6 @@ class LineFollower:
         mask = get_color_mask(frame, target)
         kernel = np.ones((3, 3), np.uint8)
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5)))
 
         # detection de la ligne
         if self.tracked_line_x is None:
@@ -223,26 +214,18 @@ class LineFollower:
                 }
 
             else:
-                #check virage ou fin de la ligne droite
+                # virage ou fin de ligne droite : plus grand contour visible
                 contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                 valid = [c for c in contours if cv2.contourArea(c) >= 200]
                 if valid:
-                    candidates = []
-                    for c in valid:
-                        M = cv2.moments(c)
-                        if M['m00'] < 10:
-                            continue
-                        cx = int(M['m10'] / M['m00'])
-                        cy = int(M['m01'] / M['m00'])
-                        dx = cx - base_x
-                        dy = max(base_y - cy, 10.0)
-                        angle = float(np.degrees(np.arctan2(dx, dy)))
-                        score = abs(angle - self.current_angle)
-                        candidates.append((score, cx, cy, angle))
-
-                    if candidates:
-                        candidates.sort(key=lambda item: item[0])
-                        _, win_cx, win_cy, win_ang = candidates[0]
+                    c_best = max(valid, key=cv2.contourArea)
+                    M = cv2.moments(c_best)
+                    if M['m00'] >= 10:
+                        win_cx = int(M['m10'] / M['m00'])
+                        win_cy = int(M['m01'] / M['m00'])
+                        dx = win_cx - base_x
+                        dy = max(base_y - win_cy, 10.0)
+                        win_ang = float(np.degrees(np.arctan2(dx, dy)))
                         self.tracked_line_x = win_cx
                         offset = float(win_cx - base_x)
                         norm_offset = offset / (w / 2.0)
