@@ -32,7 +32,7 @@ class Robot:
         self.wheel_ids = wheel_ids
         self.x = 0.
         self.y = 0.
-        self.theta = 0.
+        self.teta = 0.
 
     ########## GETTERS ##########
     ### Kinematics ### 
@@ -70,9 +70,10 @@ class Robot:
 
         return xn ,yn , theta_n
 
-    def update_pose(self, v, omega, dist):
-        self.x, self.y, self.theta = self.tick_odom(self.x, self.y, self.theta, v, omega, dist)
-        self.theta = normalize_angle(self.theta)
+    def update_pose(self, v, omega, dt):
+        x, y, teta = self.tick_odom(self.x, self.y, math.radians(self.teta), v, math.radians(omega), dt)
+        self.x, self.y = x, y
+        self.teta = normalize_angle(math.degrees(teta))
 
     ##########  MOVE ROBOT ##########
 
@@ -113,6 +114,7 @@ class Robot:
     def stop (self):
         self.wheels_io.set_moving_speed({mid: 0 for mid in self.wheel_ids})
         return
+    
 
     ### GO TO ###
 
@@ -124,13 +126,13 @@ class Robot:
         if distance > self.POSITION_TOL:
             heading = np.degrees(np.arctan2(dy, dx))
 
-            turn = normalize_angle(heading - self.theta)
+            turn = normalize_angle(heading - self.teta)
             if abs(turn) > self.ANGLE_TOL:
                 self.rotate_center_d(turn)
 
             self.move_forward_d(distance)
 
-        turn = normalize_angle(theta - self.theta)
+        turn = normalize_angle(theta - self.teta)
         if abs(turn) > self.ANGLE_TOL:
             self.rotate_center_d(turn)
 
@@ -147,5 +149,7 @@ class Robot:
 
     def pixel_to_world(self, x, y):
         xr, yr = self.pixel_to_robot(x, y)
-        return (self.x + xr * math.cos(self.theta) - yr * math.sin(self.theta),
-                self.y + xr * math.sin(self.theta) + yr * math.cos(self.theta))
+        xr, yr = xr * 100, yr * 100
+        t = math.radians(self.teta)
+        return (self.x + xr * math.cos(t) - yr * math.sin(t),
+                self.y + xr * math.sin(t) + yr * math.cos(t))
