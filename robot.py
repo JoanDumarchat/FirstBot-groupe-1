@@ -120,9 +120,6 @@ class Robot:
         self.stop()
         self.update_pose(v, omega, dist)
 
-    def move_forward_s (self, speed):
-        self.wheels_io.set_moving_speed({mid: speed*self.WHEEL_MODIFIER[mid] for mid in self.wheel_ids})
-
     def rotate_center_d (self, angle):
         sign = 1 if angle >= 0 else -1
         cmd = {mid: sign * self.WHEEL_SPEED for mid in self.wheel_ids}
@@ -131,6 +128,9 @@ class Robot:
         time.sleep(dt)
         self.stop()
         self.update_pose(v, omega, dt)
+
+    def move_forward_s (self, speed):
+        self.wheels_io.set_moving_speed({mid: speed*self.WHEEL_MODIFIER[mid] for mid in self.wheel_ids})
 
     def rotate_center_s (self, speed):
         self.wheels_io.set_moving_speed({mid: speed for mid in self.wheel_ids})
