@@ -18,6 +18,8 @@ class Robot:
     WHEEL_CIRC = 2 * math.pi * WHEEL_RADIUS
     WHEEL_MODIFIER = {1 : -1, 2 : 1}
     WHEEL_SPEED = 360
+    WHEEL_LEFT_ID = 2
+    WHEEL_RIGHT_ID = 1
     LOCAL = [(0.0, 0.0), (0.0, -0.04), (0.0295, -0.0055), (0.0295, -0.0305)]
     PIXELS = [(34, 179), (308, 176), (74, 72), (206, 65)]
 
@@ -133,8 +135,8 @@ class Robot:
     def move_s (self, linear_speed, angular_speed):
         corrected_linear_speed = linear_speed * np.cos(np.min(np.abs(angular_speed), 90))
         v_left, v_right = self.inverse_kinematics(corrected_linear_speed * self.WHEEL_SPEED, angular_speed)
-        self.wheel_io.set_moving_speed({self.WHEEL_LEFT_ID : v_left})
-        self.wheel_io.set_moving_speed({self.WHEEL_RIGHT_ID : v_right})
+        self.wheel_io.set_moving_speed({self.WHEEL_LEFT_ID : v_left * self.WHEEL_MODIFIER[self.WHEEL_LEFT_ID]})
+        self.wheel_io.set_moving_speed({self.WHEEL_RIGHT_ID : v_right * self.WHEEL_MODIFIER[self.WHEEL_RIGHT_ID]})
 
     def stop (self):
         self.wheels_io.set_moving_speed({mid: 0 for mid in self.wheel_ids})
