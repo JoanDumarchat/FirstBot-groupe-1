@@ -81,6 +81,7 @@ class LineFollower:
             self.seq_idx = 3
 
         self.green_cooldown_until_sec = 0.0
+        self.transition_boost_until_sec = 0.0
         self.green_consecutive_frames = 0
         self.last_consigne = 0.0
         self.current_angle = 0.0
@@ -114,6 +115,7 @@ class LineFollower:
             self.seq_idx = 1
 
         self.green_cooldown_until_sec = current_time_sec + self.GREEN_COOLDOWN_SECONDS
+        self.transition_boost_until_sec = current_time_sec + 1.8  # Avance 1-2 tours de roue (1.8s)
         self.green_consecutive_frames = 0
         self.last_consigne = 0.0
         self.current_angle = 0.0
@@ -121,7 +123,7 @@ class LineFollower:
         self.last_turn_dir = 0.0
         self.search_frames = 0
         self.is_searching = False
-        print(f"\n[TRANSITION BOUCLE] {prev} -> {self.current_target} (Verrouillé 7s)")
+        print(f"\n[TRANSITION BOUCLE] {prev} -> {self.current_target} (Poussée avance 1.8s)")
 
     def cycle_target(self):
         self.advance_to_next_target(time.time())
@@ -266,6 +268,14 @@ class LineFollower:
             is_active = True
             mode_str = "LIGNE DROITE" if is_straight_continuation else "SUIVI"
             status_str = f"[{target}:{mode_str}] Ang:{chosen['angle']:+5.1f}° | Off:{chosen['offset']:+5.1f}px | Cmd:{self.last_consigne:+5.1f}°"
+
+        elif current_time_sec < self.transition_boost_until_sec:
+            # Avance tout droit (1-2 tours de roue) après le vert pour franchir la zone et trouver la ligne
+            self.is_searching = False
+            is_active = True
+            self.last_consigne = 0.0
+            rem = self.transition_boost_until_sec - current_time_sec
+            status_str = f"[{target}:AVANCE 1-2 TOURS] Recherche ligne ({rem:.1f}s)..."
 
         elif self.last_turn_dir != 0.0 and self.search_frames < self.max_search_frames:
             self.search_frames += 1
