@@ -10,22 +10,22 @@ from linefollowing_with_cam import LineFollower
 
 def challenge_goto(robot):
     print("Position initiale :")
-    print(f"x={robot.x}, y={robot.y}, theta={robot.teta}")
+    print(f"x={robot.x}, y={robot.y}, theta={robot.theta}")
 
     # Aller à x=30 cm, y=0 cm, theta=90°
     robot.go_to_xya(100, 50, 90)
     print (robot.x,robot.y)
-    print (robot.teta)
+    print (robot.theta)
 
     robot.go_to_xya(0, 0, 0)
 
     print("Position finale :")
-    print(f"x={robot.x:.2f}, y={robot.y:.2f}, theta={robot.teta:.2f}")
+    print(f"x={robot.x:.2f}, y={robot.y:.2f}, theta={robot.theta:.2f}")
 
 
 def challenge_odom(robot):
     robot.wheels_io.disable_torque(robot.wheel_ids)
-    robot.x, robot.y, robot.teta = 0., 0., 0.
+    robot.x, robot.y, robot.theta = 0., 0., 0.
     print("Roues libres : pousse le robot, puis Ctrl-C")
     print(record_movements(robot))
 
