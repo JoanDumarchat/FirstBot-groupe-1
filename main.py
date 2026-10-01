@@ -56,13 +56,13 @@ def main():
 
     try:
         print("Position initiale :")
-        print(f"x={robot.x}, y={robot.y}, theta={robot.teta}")
+        print(f"x={robot.x}, y={robot.y}, theta={robot.theta}")
 
         # Aller à x=30 cm, y=0 cm, theta=90°
-        robot.go_to_xya(30, 0, 90)
+        robot.go_to_xya(100, 0, 90)
 
         print("Position finale :")
-        print(f"x={robot.x:.2f}, y={robot.y:.2f}, theta={robot.teta:.2f}")
+        print(f"x={robot.x:.2f}, y={robot.y:.2f}, theta={robot.theta:.2f}")
 
     finally:
         robot.stop()

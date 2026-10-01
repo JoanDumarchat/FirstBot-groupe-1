@@ -19,14 +19,14 @@ def record_movements (robot : Robot):
 
             linear_speed, angular_speed = robot.direct_kinematics(v_left, v_right)
 
-            x, y, teta = robot.tick_odom(robot.x, robot.y, robot.teta, linear_speed, angular_speed, dt)
+            x, y, theta = robot.tick_odom(robot.x, robot.y, robot.theta, linear_speed, angular_speed, dt)
 
             robot.x = x
             robot.y = y
-            robot.teta = teta
+            robot.theta = theta
 
             time.sleep(sleep_time)
 
     except KeyboardInterrupt:
         print("\nStopped recording.")
-        return robot.x, robot.y, np.rad2deg(robot.teta)
+        return robot.x, robot.y, np.rad2deg(robot.theta)
