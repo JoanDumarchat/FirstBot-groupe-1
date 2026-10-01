@@ -51,6 +51,10 @@ def get_color_mask(bgr, color):
 
 
 def check_green_present(bgr):
+    """
+    Détecte la présence de la bande verte ET confirme la présence d'une autre couleur 
+    de la piste (Jaune, Bleu ou Rouge) directement sur le flux BGR brut.
+    """
     h, w = bgr.shape[:2]
     roi = bgr[int(h * 0.30):, :]
     green_mask = get_color_mask(roi, "VERT")
@@ -62,7 +66,20 @@ def check_green_present(bgr):
         return False
 
     min_area = int(120 * (w / 320.0) * (h / 240.0))
-    return any(cv2.contourArea(c) >= min_area for c in contours)
+    if not any(cv2.contourArea(c) >= min_area for c in contours):
+        return False
+
+    # Validation directe sur le flux BGR brut (Rouge, Bleu ou Jaune)
+    b, g, r = cv2.split(roi)
+    r_i = r.astype(np.int16)
+    g_i = g.astype(np.int16)
+    b_i = b.astype(np.int16)
+
+    has_red = np.count_nonzero((r_i > g_i + 20) & (r_i > b_i + 20) & (r > 60)) >= 30
+    has_blue = np.count_nonzero((b_i > r_i + 30) & (b_i > g_i + 15) & (b > 60)) >= 30
+    has_yellow = np.count_nonzero((r_i > b_i + 20) & (g_i > b_i + 15) & (r > 70) & (g > 70)) >= 30
+
+    return has_red or has_blue or has_yellow
 
 
 class LineFollower:
