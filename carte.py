@@ -2,9 +2,9 @@
 carte.py - Carte vue du ciel de la piste (challenge 4).
 
 À chaque image du suivi de ligne :
-  1. detect_line (linefollowing_with_cam.py) dit si la ligne est vue et donne son décalage ;
-  2. on retrouve le centre (cx, cy) de la ligne dans l'image ;
-  3. robot.pixel_to_world(cx, cy) place ce point dans la salle (cm),
+  1. detect_line (ci-dessous) trouve le centre (cx, cy) de la ligne dans l'image, si elle est vue
+     (avec le masque de couleur get_color_mask de linefollowing_with_cam.py) ;
+  2. robot.pixel_to_world(cx, cy) place ce point dans la salle (cm),
      grâce à l'homographie et à la position du robot (odométrie).
 On garde aussi la position du robot (son trajet) à chaque pas.
 """
@@ -16,30 +16,27 @@ import matplotlib
 matplotlib.use("Agg")          # pas d'écran sur le Raspberry Pi : on dessine dans un fichier
 import matplotlib.pyplot as plt
 
-from linefollowing_with_cam import detect_line, get_color_mask
+from linefollowing_with_cam import get_color_mask
 
 COULEURS_TRACE = {"JAUNE": "gold", "BLEU": "tab:blue", "ROUGE": "tab:red", "VERT": "tab:green"}
 
 
-def centre_ligne(frame, couleur):
-    """Centre (cx, cy) en pixels de la ligne détectée par detect_line, ou None.
-    frame = image BGR (detect_line et get_color_mask font eux-mêmes la conversion HSV).
-    cx vient directement de detect_line (offset + w/2) ; cy est calculé sur le même contour."""
-    h, w = frame.shape[:2]
-    detected, consigne, angle, offset = detect_line(frame, couleur)
-    if not detected:
-        return None
-    cx = offset + w / 2.0
-
-    # même masque et même plus grand contour que dans detect_line, pour avoir cy
+def detect_line(frame, couleur):
+    """Centre (cx, cy) en pixels du plus grand morceau de ligne de cette couleur, ou None.
+    frame = image BGR (get_color_mask fait elle-même la conversion HSV)."""
     mask = get_color_mask(frame, couleur)
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5)))
+
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    c = max(contours, key=cv2.contourArea)
-    M = cv2.moments(c)
-    cy = M["m01"] / M["m00"]
-    return cx, cy
+    valid = [c for c in contours if cv2.contourArea(c) >= 120]
+    if not valid:
+        return None
+
+    M = cv2.moments(max(valid, key=cv2.contourArea))
+    if M["m00"] < 1.0:
+        return None
+    return M["m10"] / M["m00"], M["m01"] / M["m00"]
 
 
 def angle_robot(robot):
@@ -59,7 +56,7 @@ class Carte:
 
         if couleur not in COULEURS_TRACE:      # "DEPART" ou "FIN" : pas de ligne à suivre
             return
-        pixel = centre_ligne(frame, couleur)
+        pixel = detect_line(frame, couleur)
         if pixel is not None:
             x, y = self.robot.pixel_to_world(*pixel)
             self.points_ligne.append([couleur, float(x), float(y)])
