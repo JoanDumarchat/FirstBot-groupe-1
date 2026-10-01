@@ -21,17 +21,18 @@ from linefollowing_with_cam import detect_line, get_color_mask
 COULEURS_TRACE = {"JAUNE": "gold", "BLEU": "tab:blue", "ROUGE": "tab:red", "VERT": "tab:green"}
 
 
-def centre_ligne(hsv, couleur):
+def centre_ligne(bgr, couleur):
     """Centre (cx, cy) en pixels de la ligne détectée par detect_line, ou None.
-    cx vient directement de detect_line (offset + w/2) ; cy est calculé sur le même contour."""
-    h, w = hsv.shape[:2]
-    detected, consigne, angle, offset = detect_line(hsv, couleur)
+    cx vient directement de detect_line (offset + w/2) ; cy est calculé sur le même contour.
+    L'image doit être en BGR (comme celle de la caméra) : detect_line fait lui-même la conversion HSV."""
+    h, w = bgr.shape[:2]
+    detected, consigne, angle, offset = detect_line(bgr, couleur)
     if not detected:
         return None
     cx = offset + w / 2.0
 
     # même masque et même plus grand contour que dans detect_line, pour avoir cy
-    mask = get_color_mask(hsv, couleur)
+    mask = get_color_mask(bgr, couleur)
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 9)))
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -56,8 +57,7 @@ class Carte:
         """À appeler à chaque image, avec l'image donnée à process_frame et la couleur suivie."""
         self.trajet.append([couleur, float(self.robot.x), float(self.robot.y)])
 
-        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        pixel = centre_ligne(hsv, couleur)
+        pixel = centre_ligne(frame, couleur)
         if pixel is not None:
             x, y = self.robot.pixel_to_world(*pixel)
             self.points_ligne.append([couleur, float(x), float(y)])
