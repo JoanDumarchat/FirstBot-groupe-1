@@ -7,7 +7,7 @@ from robot import Robot
 from drivecam import DriveCam
 from linefollowing_with_cam import LineFollower
 from carte import Carte, dessiner_depuis_fichier
-from aveugle import tour_aveugle
+from Aveugle import tour_aveugle
 
 
 def challenge_goto(robot):
