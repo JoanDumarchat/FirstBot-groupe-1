@@ -69,7 +69,7 @@ def check_green_present(bgr):
 class LineFollower:
     GREEN_COOLDOWN_SECONDS = 7.0
     CORRIDOR_HALF_WIDTH = 45  # Demi-largeur du couloir de suivi axiale (px)
-    REQUIRED_GREEN_FRAMES = 15  # Exige 15 images consécutives avec du vert
+    REQUIRED_GREEN_FRAMES = 3  # Exige 15 images consécutives avec du vert
 
     def __init__(self, initial_target="VERT"):
         self.seq_idx = 0  # 0: DEPART, 1: JAUNE, 2: BLEU, 3: ROUGE, 4: FIN
