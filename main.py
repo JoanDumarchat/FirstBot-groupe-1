@@ -7,7 +7,6 @@ from robot import Robot
 from drivecam import DriveCam
 from linefollowing_with_cam import LineFollower
 from carte import Carte, dessiner_depuis_fichier
-from Aveugle import tour_aveugle
 
 
 def challenge_goto(robot):
@@ -207,11 +206,8 @@ def main():
             challenge_odom(robot)
         elif choix in ("2", "line", "cam"):
             challenge_line_following(robot)
-        elif choix == "aveugle":
-            couleur = sys.argv[2] if len(sys.argv) > 2 else None
-            tour_aveugle(robot, couleur)
         else:
-            print("Choix inconnu : tape 1 (base), 2 (suivi de ligne), aveugle ou carte")
+            print("Choix inconnu : tape 1 (base), 2 (suivi de ligne) ou carte")
 
     finally:
         robot.stop()
