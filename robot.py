@@ -117,7 +117,8 @@ class Robot:
 
 
     def move_s (self, linear_speed, angular_speed):
-        v_left, v_right = self.inverse_kinematics(linear_speed, angular_speed)
+        corrected_linear_speed = linear_speed * np.cos(np.min(np.abs(angular_speed), 90))
+        v_left, v_right = self.inverse_kinematics(corrected_linear_speed * self.WHEEL_SPEED, angular_speed)
         self.wheel_io.set_moving_speed({self.WHEEL_LEFT_ID : v_left})
         self.wheel_io.set_moving_speed({self.WHEEL_RIGHT_ID : v_right})
 
