@@ -124,7 +124,7 @@ class Robot:
         dy = y - self.y
         distance = np.hypot(dx, dy)
 
-        if distance > self.POS_TOL:
+        if distance > self.POSITION_TOL:
             heading = np.degrees(np.arctan2(dy, dx))
 
             turn = normalize_angle(heading - self.theta)
