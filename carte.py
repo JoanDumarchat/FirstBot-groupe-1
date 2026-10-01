@@ -21,20 +21,20 @@ from linefollowing_with_cam import detect_line, get_color_mask
 COULEURS_TRACE = {"JAUNE": "gold", "BLEU": "tab:blue", "ROUGE": "tab:red", "VERT": "tab:green"}
 
 
-def centre_ligne(bgr, couleur):
+def centre_ligne(frame, couleur):
     """Centre (cx, cy) en pixels de la ligne détectée par detect_line, ou None.
-    cx vient directement de detect_line (offset + w/2) ; cy est calculé sur le même contour.
-    L'image doit être en BGR (comme celle de la caméra) : detect_line fait lui-même la conversion HSV."""
-    h, w = bgr.shape[:2]
-    detected, consigne, angle, offset = detect_line(bgr, couleur)
+    frame = image BGR (detect_line et get_color_mask font eux-mêmes la conversion HSV).
+    cx vient directement de detect_line (offset + w/2) ; cy est calculé sur le même contour."""
+    h, w = frame.shape[:2]
+    detected, consigne, angle, offset = detect_line(frame, couleur)
     if not detected:
         return None
     cx = offset + w / 2.0
 
     # même masque et même plus grand contour que dans detect_line, pour avoir cy
-    mask = get_color_mask(bgr, couleur)
+    mask = get_color_mask(frame, couleur)
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 9)))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5)))
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     c = max(contours, key=cv2.contourArea)
     M = cv2.moments(c)
@@ -57,6 +57,8 @@ class Carte:
         """À appeler à chaque image, avec l'image donnée à process_frame et la couleur suivie."""
         self.trajet.append([couleur, float(self.robot.x), float(self.robot.y)])
 
+        if couleur not in COULEURS_TRACE:      # "DEPART" ou "FIN" : pas de ligne à suivre
+            return
         pixel = centre_ligne(frame, couleur)
         if pixel is not None:
             x, y = self.robot.pixel_to_world(*pixel)
@@ -70,10 +72,20 @@ class Carte:
     def dessiner(self, fichier="carte.png"):
         plt.figure(figsize=(7, 7))
         for nom, trace in COULEURS_TRACE.items():
-            ligne = [(x, y) for c, x, y in self.points_ligne if c == nom]
-            if ligne:
-                xs, ys = zip(*ligne)
-                plt.scatter(xs, ys, s=6, color=trace, label=nom)
+            xs, ys = [], []
+            precedent = None
+            for c, x, y in self.points_ligne:
+                if c != nom:
+                    continue
+                # si le point est loin du précédent (> 10 cm), on coupe la ligne (nan = trou)
+                if precedent and ((x - precedent[0]) ** 2 + (y - precedent[1]) ** 2) ** 0.5 > 10:
+                    xs.append(float("nan"))
+                    ys.append(float("nan"))
+                xs.append(x)
+                ys.append(y)
+                precedent = (x, y)
+            if xs:
+                plt.plot(xs, ys, "-", color=trace, linewidth=3, label=nom)
         if self.trajet:
             xs, ys = zip(*[(x, y) for c, x, y in self.trajet])
             plt.plot(xs, ys, "-", color="grey", linewidth=0.8, label="trajet du robot")

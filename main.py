@@ -143,6 +143,7 @@ def challenge_line_following(robot):
                 status_str = f"[PAUSE] Appuyez sur ESPACE pour reprendre | Vit:{v_effective:.1f}cm/s"
             else:
                 consigne, is_active, status_str = follower.process_frame(frame)
+                carte.enregistrer(frame, follower.current_target)   # --- CARTE --- detect_line + pixel_to_world
                 driver.drive_autonome(consigne, is_active, is_searching=follower.is_searching, v_effective=v_effective)
                 status_str += f" | Vit:{v_effective:.1f}cm/s (x{speed_factor:.1f})"
 
