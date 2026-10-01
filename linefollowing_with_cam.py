@@ -292,7 +292,3 @@ class LineFollower:
             status_str = f"[{target} PERDUE] Arrêt"
 
         return self.last_consigne, is_active, status_str
-<<<<<<< HEAD
-=======
-        
->>>>>>> e7aaaea (Correction masque et validation BGR brute)
