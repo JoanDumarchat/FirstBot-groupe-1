@@ -7,80 +7,138 @@ PATH_ORDER = ["DEPART", "JAUNE", "BLEU", "ROUGE", "FIN"]
 
 def get_color_mask(bgr, color):
     hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
-    h, s, v = cv2.split(hsv)
-    b, g, r = cv2.split(bgr)
 
-    # evite les debordmene uint8
-    r_i = r.astype(np.int16)
-    g_i = g.astype(np.int16)
-    b_i = b.astype(np.int16)
+    h, s, _ = cv2.split(hsv)
 
     if color == "JAUNE":
         mask = (
-            (h >= 12) & (h <= 45) &
-            (s >= 35) & (v >= 50) &
-            (r_i > b_i + 15) & (g_i > b_i + 10)
+            (h >= 15) &
+            (h <= 40) &
+            (s >= 70)
         )
-        return mask.astype(np.uint8) * 255
 
     elif color == "VERT":
         mask = (
-            (h >= 60) & (h <= 98) &
-            (s >= 60) & (v >= 40) &
-            (g_i > r_i + 20) & (b_i < 190)
+            (h >= 60) &
+            (h <= 95) &
+            (s >= 70)
         )
-        return mask.astype(np.uint8) * 255
 
     elif color == "BLEU":
         mask = (
-            (h >= 99) & (h <= 135) &
-            (s >= 110) & (v >= 50) &
-            (b_i > r_i + 40) & (b_i > g_i + 15)
+            (h >= 100) &
+            (h <= 135) &
+            (s >= 80)
         )
-        return mask.astype(np.uint8) * 255
 
     elif color == "ROUGE":
         mask = (
-            ((h <= 12) | (h >= 155)) &
-            (s >= 50) & (v >= 40) &
-            (r_i > g_i + 25) & (r_i > b_i + 25)
+            (
+                (h <= 10) |
+                (h >= 170)
+            ) &
+            (s >= 70)
         )
-        return mask.astype(np.uint8) * 255
 
-    return np.zeros(bgr.shape[:2], dtype=np.uint8)
+    else:
+        return np.zeros(
+            bgr.shape[:2],
+            dtype=np.uint8
+        )
+
+    return mask.astype(np.uint8) * 255
 
 
 def check_green_present(bgr):
     """
-    Détecte la présence de la bande verte ET confirme la présence d'une autre couleur 
-    de la piste (Jaune, Bleu ou Rouge) directement sur le flux BGR brut.
-    """
-    h, w = bgr.shape[:2]
-    roi = bgr[int(h * 0.30):, :]
-    green_mask = get_color_mask(roi, "VERT")
-    kernel = np.ones((3, 3), np.uint8)
-    green_mask = cv2.morphologyEx(green_mask, cv2.MORPH_OPEN, kernel)
+    Détecte la bande verte et vérifie qu'une autre couleur
+    de la piste est présente.
 
-    contours, _ = cv2.findContours(green_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    La détection repose sur la teinte et la saturation HSV,
+    sans utiliser directement la luminosité.
+    """
+
+    h, w = bgr.shape[:2]
+
+    roi = bgr[int(h * 0.30):, :]
+
+    # Détection du vert
+    green_mask = get_color_mask(
+        roi,
+        "VERT"
+    )
+
+    kernel = np.ones(
+        (3, 3),
+        np.uint8
+    )
+
+    green_mask = cv2.morphologyEx(
+        green_mask,
+        cv2.MORPH_OPEN,
+        kernel
+    )
+
+    contours, _ = cv2.findContours(
+        green_mask,
+        cv2.RETR_EXTERNAL,
+        cv2.CHAIN_APPROX_SIMPLE
+    )
+
     if not contours:
         return False
 
-    min_area = int(120 * (w / 320.0) * (h / 240.0))
-    if not any(cv2.contourArea(c) >= min_area for c in contours):
+    min_area = int(
+        120
+        * (w / 320.0)
+        * (h / 240.0)
+    )
+
+    if not any(
+        cv2.contourArea(c) >= min_area
+        for c in contours
+    ):
         return False
 
-    # Validation directe sur le flux BGR brut (Rouge, Bleu ou Jaune)
-    b, g, r = cv2.split(roi)
-    r_i = r.astype(np.int16)
-    g_i = g.astype(np.int16)
-    b_i = b.astype(np.int16)
+    # Vérifie les autres couleurs uniquement
+    # avec leurs masques HSV.
+    red_mask = get_color_mask(
+        roi,
+        "ROUGE"
+    )
 
-    has_red = np.count_nonzero((r_i > g_i + 20) & (r_i > b_i + 20) & (r > 60)) >= 30
-    has_blue = np.count_nonzero((b_i > r_i + 30) & (b_i > g_i + 15) & (b > 60)) >= 30
-    has_yellow = np.count_nonzero((r_i > b_i + 20) & (g_i > b_i + 15) & (r > 70) & (g > 70)) >= 30
+    blue_mask = get_color_mask(
+        roi,
+        "BLEU"
+    )
 
-    return has_red or has_blue or has_yellow
+    yellow_mask = get_color_mask(
+        roi,
+        "JAUNE"
+    )
 
+    min_color_pixels = 30
+
+    has_red = (
+        np.count_nonzero(red_mask)
+        >= min_color_pixels
+    )
+
+    has_blue = (
+        np.count_nonzero(blue_mask)
+        >= min_color_pixels
+    )
+
+    has_yellow = (
+        np.count_nonzero(yellow_mask)
+        >= min_color_pixels
+    )
+
+    return (
+        has_red
+        or has_blue
+        or has_yellow
+    )
 
 class LineFollower:
     GREEN_COOLDOWN_SECONDS = 7.0
