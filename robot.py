@@ -12,7 +12,7 @@ class Robot:
 
     ## Roues ##
 
-    WHEEL_SPACING = 13.0 # cm
+    WHEEL_SPACING = 13.0 # cm (entraxe réel calibré sur le robot physique)
     WHEEL_DIAMETER = 5.16
     WHEEL_RADIUS = WHEEL_DIAMETER / 2
     WHEEL_CIRC = 2 * math.pi * WHEEL_RADIUS
@@ -24,8 +24,8 @@ class Robot:
     ROBOT_ROTATE_CIRC = 2 * math.pi * (WHEEL_SPACING / 2)
   
     ## Tolérance ##
-    POSITION_TOL = 0.5 #cm
-    ANGLE_TOL = 1
+    POSITION_TOL = 0.75 #cm
+    ANGLE_TOL = 1.25
     
     def __init__(self, wheels_io, wheel_ids):
         self.wheels_io = wheels_io
@@ -85,6 +85,31 @@ class Robot:
         v, omega = self.direct_kinematics(v_left, v_right)
 
         return v, math.degrees(omega)
+
+    def drive(self, distance=4.0, angle=0.0):
+        """
+        avvance de base et si reçoit un angle tourne de cette angle"""
+        if abs(angle) > self.ANGLE_TOL:
+            self.rotate_center_d(angle)
+
+        if distance > 0:
+            self.move_forward_d(distance)
+
+    def drive_consigne(self, *args, distance=4.0):
+        """
+        reçoit l'angle de la cam
+        """
+        if len(args) == 1:
+            consigne_deg = args[0]
+        elif len(args) >= 2:
+            consigne_deg = args[1]
+        else:
+            consigne_deg = 0.0
+
+        # Consigne caméra : >0 pour droite, <0 pour gauche.
+        # rotate_center_d : négatif pour tourner à droite, positif pour gauche.
+        turn_angle = - float(consigne_deg)
+        self.drive(distance=distance, angle=turn_angle)
 
     def move_forward_d (self, distance):
         sign = 1 if distance >= 0 else -1
