@@ -1,15 +1,4 @@
-"""
-carte.py - Carte vue du ciel de la piste (challenge 4).
-
-À chaque image du suivi de ligne :
-  1. detect_line (ci-dessous) trouve le centre (cx, cy) de la ligne dans l'image, si elle est vue
-     (avec le masque de couleur get_color_mask de linefollowing_with_cam.py) ;
-  2. robot.pixel_to_world(cx, cy) place ce point dans la salle (cm),
-     grâce à l'homographie et à la position du robot (odométrie).
-On garde aussi la position du robot (son trajet) à chaque pas.
-"""
 import json
-
 import cv2
 import numpy as np
 import matplotlib

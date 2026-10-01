@@ -208,7 +208,6 @@ def main():
         elif choix in ("2", "line", "cam"):
             challenge_line_following(robot)
         elif choix == "aveugle":
-            # python3 main.py aveugle JAUNE  (ou BLEU, ROUGE, ou rien pour toutes les couleurs)
             couleur = sys.argv[2] if len(sys.argv) > 2 else None
             tour_aveugle(robot, couleur)
         else:
