@@ -112,13 +112,13 @@ class Robot:
         self.drive(distance=distance, angle=turn_angle)
 
     def move_d (self, distance, angle):
+
         if angle != 0:
             sign = 1 if angle >= 0 else -1
             cmd = {mid: sign * self.WHEEL_SPEED for mid in self.wheel_ids}
             v, omega = self.set_wheel_speeds(cmd)
             dt = (self.ROBOT_ROTATE_CIRC * ( sign * angle ) / 360) / self.WHEEL_CIRC
             time.sleep(dt)
-            self.stop()
             self.update_pose(v, omega, dt)
 
         if distance != 0:
@@ -127,7 +127,6 @@ class Robot:
             v, omega = self.set_wheel_speeds(cmd)
             dist = sign * distance / self.WHEEL_CIRC
             time.sleep(dist)
-            self.stop()
             self.update_pose(v, omega, dist)
 
 
