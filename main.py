@@ -102,8 +102,7 @@ def challenge_line_following(robot):
 
     # --- CARTE --- le départ (marqueur vert) est l'origine
     robot.x, robot.y, robot.theta = 0., 0., 0.
-    carte = Carte(robot)
-    nb_images = 0
+    carte = Carte(robot)   # points enregistrés à chaque image, carte dessinée seulement à la fin
 
     v_base = 7.0
     speed_factor = 1.0
@@ -158,10 +157,6 @@ def challenge_line_following(robot):
                 carte.enregistrer(frame, follower.current_target)
                 driver.drive_autonome(consigne, is_active, is_searching=follower.is_searching, v_effective=v_effective)
                 status_str += f" | Vit:{v_effective:.1f}cm/s (x{speed_factor:.1f})"
-
-                nb_images += 1
-                if nb_images % 50 == 0:
-                    carte.dessiner("carte.png")
 
             sys.stdout.write(f"\r{status_str}   ")
             sys.stdout.flush()
