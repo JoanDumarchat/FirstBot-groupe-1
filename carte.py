@@ -82,10 +82,10 @@ class Carte:
                 ys.append(y)
                 precedent = (x, y)
             if xs:
-                plt.plot(xs, ys, "-", color=trace, linewidth=3, label=nom)
+                plt.plot(ys, xs, "-", color=trace, linewidth=3, label=nom)
         if self.trajet:
             xs, ys = zip(*[(x, y) for c, x, y in self.trajet])
-            plt.plot(xs, ys, "-", color="grey", linewidth=0.8, label="trajet du robot")
+            plt.plot(ys, xs, "-", color="grey", linewidth=0.8, label="trajet du robot")
         plt.plot(0, 0, "k^", markersize=10, label="départ")
         plt.axis("equal")
         plt.grid(True)
