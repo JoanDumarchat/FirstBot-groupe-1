@@ -69,6 +69,7 @@ def check_green_present(bgr):
 class LineFollower:
     GREEN_COOLDOWN_SECONDS = 7.0
     CORRIDOR_HALF_WIDTH = 45  # Demi-largeur du couloir de suivi axiale (px)
+    REQUIRED_GREEN_FRAMES = 15  # Exige 15 images consécutives avec du vert
 
     def __init__(self, initial_target="VERT"):
         self.seq_idx = 0  # 0: DEPART, 1: JAUNE, 2: BLEU, 3: ROUGE, 4: FIN
@@ -80,6 +81,7 @@ class LineFollower:
             self.seq_idx = 3
 
         self.green_cooldown_until_sec = 0.0
+        self.green_consecutive_frames = 0
         self.last_consigne = 0.0
         self.current_angle = 0.0
         self.tracked_line_x = None
@@ -112,6 +114,7 @@ class LineFollower:
             self.seq_idx = 1
 
         self.green_cooldown_until_sec = current_time_sec + self.GREEN_COOLDOWN_SECONDS
+        self.green_consecutive_frames = 0
         self.last_consigne = 0.0
         self.current_angle = 0.0
         self.tracked_line_x = None
@@ -137,17 +140,26 @@ class LineFollower:
         target = self.current_target
         base_x = int(w / 2.0)
         base_y = int(h)
+
+        # Détection du vert avec compteur de confirmation sur N images consécutives
+        is_green_this_frame = check_green_present(frame)
+        if is_green_this_frame:
+            self.green_consecutive_frames += 1
+        else:
+            self.green_consecutive_frames = 0
+
+        # 0. ÉTAT DE DÉPART : Attend le vert initial confirmé sur 3 images pour partir sur JAUNE
         if target == "DEPART":
-            if check_green_present(frame):
+            if self.green_consecutive_frames >= self.REQUIRED_GREEN_FRAMES:
                 self.advance_to_next_target(current_time_sec)
 
             target = self.current_target
             if target == "DEPART":
-                return 0.0, False, "[DEPART] En attente du vert..."
+                return 0.0, False, f"[DEPART] En attente du vert ({self.green_consecutive_frames}/{self.REQUIRED_GREEN_FRAMES})..."
 
-        # transition verte en cours apres cd
+        # 1. TRANSITION VERTE EN COURS (après cooldown 7s, confirmé sur 3 images)
         if current_time_sec >= self.green_cooldown_until_sec:
-            if check_green_present(frame):
+            if self.green_consecutive_frames >= self.REQUIRED_GREEN_FRAMES:
                 self.advance_to_next_target(current_time_sec)
 
         target = self.current_target
