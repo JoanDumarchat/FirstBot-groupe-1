@@ -31,27 +31,83 @@ def challenge_odom(robot):
     print(record_movements(robot))
 
 
+def check_terminal_keys():
+    """pour recup les inputs claviers"""
+    if sys.platform.startswith("linux"):
+        try:
+            import select
+            if select.select([sys.stdin], [], [], 0)[0]:
+                chars = ""
+                while select.select([sys.stdin], [], [], 0.003)[0]:
+                    c = sys.stdin.read(1)
+                    if not c:
+                        break
+                    chars += c
+                return chars
+        except Exception:
+            pass
+    return ""
+
+
 def challenge_line_following(robot):
     """Suivi de ligne caméra autonome (version épurée sans interface web) + carte."""
-    print("\n--- SUIVI DE LIGNE CAMERA ---")
+    print("\n" + "="*65)
+    print(" SUIVI DE LIGNE CAMERA AUTONOME")
+    print(" - Touche ESPACE     : STOPPER / REPRENDRE")
+    print(" - Touche 'd'        : CHANGER COULEUR FOCUS (Vert->Jaune->Bleu->Rouge)")
+    print(" - Touches 'i' / 'k' : Vitesse fine (+0.2 / -0.2)")
+    print(" - Touches 'u' / 'j' : Vitesse rapide (+1.0 / -1.0)")
+    print(" - Arrêt d'urgence   : Pressez Ctrl+C")
+    print("="*65 + "\n")
+
     print("Initialisation de la caméra...")
     backend = cv2.CAP_V4L2 if sys.platform.startswith("linux") else cv2.CAP_ANY
     cap = cv2.VideoCapture(0, backend)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
+
+    # Désactivation de l'AWB et fixation d'une température neutre (4200K)
+    cap.set(cv2.CAP_PROP_AUTO_WB, 0)
+    cap.set(cv2.CAP_PROP_WB_TEMPERATURE, 4200)
+    if sys.platform.startswith("linux"):
+        try:
+            import subprocess
+            subprocess.run([
+                "v4l2-ctl", "-d", "/dev/video0",
+                "-c", "white_balance_automatic=0",
+                "-c", "white_balance_temperature=4200"
+            ], capture_output=True, check=False)
+            print("[*] Balance des blancs verrouillée à 4200K (AWB désactivé).")
+        except Exception:
+            pass
+
     time.sleep(0.5)
 
     if not cap.isOpened():
         print("[ERREUR] Impossible d'ouvrir la caméra.")
         return
 
-    follower = LineFollower(initial_target="JAUNE")
+    follower = LineFollower(initial_target="VERT")
     driver = DriveCam(robot, step_distance=4.0)
 
     # --- CARTE --- le départ (marqueur vert) est l'origine
     robot.x, robot.y, robot.theta = 0., 0., 0.
     carte = Carte(robot)
     nb_images = 0
+
+    v_base = 7.0
+    speed_factor = 1.0
+    is_paused = False
+
+    old_termios = None
+    if sys.platform.startswith("linux"):
+        try:
+            import termios
+            import tty
+            old_termios = termios.tcgetattr(sys.stdin)
+            tty.setcbreak(sys.stdin.fileno())
+        except Exception:
+            pass
 
     print("Suivi autonome en cours (Ctrl+C pour arrêter)...")
     try:
@@ -60,28 +116,49 @@ def challenge_line_following(robot):
             if not ret:
                 break
 
-            # Remise à l'endroit si caméra montée tête en bas sur le châssis
-            if sys.platform.startswith("linux"):
-                frame = cv2.rotate(frame, cv2.ROTATE_180)
+            term_chars = check_terminal_keys()
+            if term_chars:
+                if ' ' in term_chars:
+                    is_paused = not is_paused
+                if 'd' in term_chars.lower():
+                    follower.cycle_target()
+                if 'i' in term_chars.lower():
+                    speed_factor = round(min(speed_factor + 0.2, 15.0), 2)
+                if 'k' in term_chars.lower():
+                    speed_factor = round(max(speed_factor - 0.2, 0.2), 2)
+                if 'u' in term_chars.lower():
+                    speed_factor = round(min(speed_factor + 1.0, 15.0), 2)
+                if 'j' in term_chars.lower():
+                    speed_factor = round(max(speed_factor - 1.0, 0.2), 2)
 
-            consigne, is_active, status = follower.process_frame(frame)
+            v_effective = v_base * speed_factor
 
-            # --- CARTE --- point de ligne vu sur cette image (detect_line + pixel_to_world)
-            carte.enregistrer(frame, follower.current_target)
+            if is_paused:
+                driver.stop()
+                status_str = f"[PAUSE] Appuyez sur ESPACE pour reprendre | Vit:{v_effective:.1f}cm/s"
+            else:
+                consigne, is_active, status_str = follower.process_frame(frame)
+                # --- CARTE --- point de ligne vu sur cette image
+                carte.enregistrer(frame, follower.current_target)
+                driver.drive_autonome(consigne, is_active, is_searching=follower.is_searching, v_effective=v_effective)
+                status_str += f" | Vit:{v_effective:.1f}cm/s (x{speed_factor:.1f})"
 
-            driver.drive_autonome(consigne, is_active)
+                nb_images += 1
+                if nb_images % 50 == 0:
+                    carte.dessiner("carte.png")
 
-            # --- CARTE --- redessinée toutes les 50 images : on peut la regarder pendant le parcours
-            nb_images += 1
-            if nb_images % 50 == 0:
-                carte.dessiner("carte.png")
-
-            sys.stdout.write(f"\r{status}   ")
+            sys.stdout.write(f"\r{status_str}   ")
             sys.stdout.flush()
 
     except KeyboardInterrupt:
         print("\n[INFO] Arrêt du suivi de ligne demandé.")
     finally:
+        if old_termios and sys.platform.startswith("linux"):
+            try:
+                import termios
+                termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_termios)
+            except Exception:
+                pass
         cap.release()
         driver.stop()
         # --- CARTE --- enregistrée même après Ctrl-C

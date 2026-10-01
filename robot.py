@@ -114,13 +114,13 @@ class Robot:
         self.drive(distance=distance, angle=turn_angle)
 
     def move_d (self, distance, angle):
-
         if angle != 0:
             sign = 1 if angle >= 0 else -1
             cmd = {mid: sign * self.WHEEL_SPEED for mid in self.wheel_ids}
             v, omega = self.set_wheel_speeds(cmd)
             dt = (self.ROBOT_ROTATE_CIRC * ( sign * angle ) / 360) / self.WHEEL_CIRC
             time.sleep(dt)
+            self.stop()
             self.update_pose(v, omega, dt)
 
         if distance != 0:
@@ -129,14 +129,35 @@ class Robot:
             v, omega = self.set_wheel_speeds(cmd)
             dist = sign * distance / self.WHEEL_CIRC
             time.sleep(dist)
+            self.stop()
             self.update_pose(v, omega, dist)
 
-
     def move_s (self, linear_speed, angular_speed):
-        corrected_linear_speed = linear_speed * np.cos(np.min(np.abs(angular_speed), 90))
-        v_left, v_right = self.inverse_kinematics(corrected_linear_speed * self.WHEEL_SPEED, angular_speed)
-        self.wheel_io.set_moving_speed({self.WHEEL_LEFT_ID : v_left * self.WHEEL_MODIFIER[self.WHEEL_LEFT_ID]})
-        self.wheel_io.set_moving_speed({self.WHEEL_RIGHT_ID : v_right * self.WHEEL_MODIFIER[self.WHEEL_RIGHT_ID]})
+        """
+        Déplacement en vitesse continue :
+        - linear_speed : vitesse d'avance (cm/s)
+        - angular_speed : vitesse de rotation (rad/s ou deg/s)
+        """
+        omega_rad = angular_speed
+        if abs(angular_speed) > 3.15:
+            omega_rad = math.radians(angular_speed)
+
+        ang_limit = min(abs(omega_rad), math.pi / 2.0)
+        corrected_linear = linear_speed * math.cos(ang_limit)
+
+        v_left_rad, v_right_rad = self.inverse_kinematics(corrected_linear, omega_rad)
+
+        left_deg = math.degrees(v_left_rad) * self.WHEEL_MODIFIER[self.wheel_ids[0]]
+        right_deg = math.degrees(v_right_rad) * self.WHEEL_MODIFIER[self.wheel_ids[1]]
+
+        max_spd = getattr(self, 'WHEEL_SPEED', 360)
+        left_deg = float(np.clip(left_deg, -max_spd, max_spd))
+        right_deg = float(np.clip(right_deg, -max_spd, max_spd))
+
+        self.wheels_io.set_moving_speed({
+            self.wheel_ids[0]: left_deg,
+            self.wheel_ids[1]: right_deg
+        })
 
     def stop (self):
         self.wheels_io.set_moving_speed({mid: 0 for mid in self.wheel_ids})

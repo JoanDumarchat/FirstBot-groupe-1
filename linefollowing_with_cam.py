@@ -1,50 +1,77 @@
+"""
+linefollowing_with_cam.py - Module de suivi de ligne vision autonome épuré.
+
+- Masques de couleur BGR/HSV calibrés avec désactivation AWB (4200K).
+- Détection de la balise verte avec temporisation de 7s entre chaque transition.
+- Asservissement par axe central de ligne et lissage de consigne.
+"""
 
 import cv2
 import numpy as np
 import time
 
-HSV = {
-
-    "JAUNE": [(np.array([16, 22, 50]), np.array([35, 255, 255]))],
-
-    "VERT":  [(np.array([36, 65, 30]), np.array([103, 255, 255]))],
-
-    "BLEU":  [(np.array([104, 60, 40]), np.array([135, 255, 255]))],
-    "ROUGE": [
-        (np.array([0, 70, 50]), np.array([10, 255, 255])),
-        (np.array([155, 70, 50]), np.array([180, 255, 255]))
-    ]
-}
-
 CYCLE_ORDER = ["VERT", "JAUNE", "BLEU", "ROUGE"]
 
 
-def get_color_mask(hsv, color):
-    """genere le mask bin de la couleur demandé"""
-    if color not in HSV:
-        return np.zeros(hsv.shape[:2], dtype=np.uint8)
+def get_color_mask(bgr, color):
+    """Génère le masque binaire précis pour chaque couleur du circuit."""
+    hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
+    h, s, v = cv2.split(hsv)
+    b, g, r = cv2.split(bgr)
 
-    mask = None
-    for low, high in HSV[color]:
-        m = cv2.inRange(hsv, low, high)
-        mask = m if mask is None else cv2.bitwise_or(mask, m)
-    return mask
+    # Conversion int16 pour éviter les débordements uint8 lors des soustractions
+    r_i = r.astype(np.int16)
+    g_i = g.astype(np.int16)
+    b_i = b.astype(np.int16)
+
+    if color == "JAUNE":
+        # Bande jaune centrale : R et G élevés, B très bas, S modérée à forte
+        mask = (
+            (h >= 18) & (h <= 38) &
+            (s >= 75) & (v >= 60) &
+            (r_i > b_i + 35) & (g_i > b_i + 25)
+        )
+        return mask.astype(np.uint8) * 255
+
+    elif color == "VERT":
+        # Vert haut droite (aspect sarcelle/teal sur la cam) : H monte jusqu'à 98
+        mask = (
+            (h >= 60) & (h <= 98) &
+            (s >= 60) & (v >= 40) &
+            (g_i > r_i + 20) & (b_i < 190)
+        )
+        return mask.astype(np.uint8) * 255
+
+    elif color == "BLEU":
+        # Bande bleue centrale : B très dominant, S >= 110 pour rejeter le sol gris bleuté
+        mask = (
+            (h >= 99) & (h <= 135) &
+            (s >= 110) & (v >= 50) &
+            (b_i > r_i + 40) & (b_i > g_i + 15)
+        )
+        return mask.astype(np.uint8) * 255
+
+    elif color == "ROUGE":
+        # Rouge haut gauche : moins saturé que le bleu, split 0-12 et 155-180
+        mask = (
+            ((h <= 12) | (h >= 155)) &
+            (s >= 50) & (v >= 40) &
+            (r_i > g_i + 25) & (r_i > b_i + 25)
+        )
+        return mask.astype(np.uint8) * 255
+
+    return np.zeros(bgr.shape[:2], dtype=np.uint8)
 
 
-def check_green_present(hsv):
-    """
-    check green sur la cam
-    """
-    h, w = hsv.shape[:2]
-    green_mask = get_color_mask(hsv, "VERT")
+def check_green_present(bgr):
+    """Détecte la présence d'une balise verte devant le robot."""
+    h, w = bgr.shape[:2]
+    roi = bgr[int(h * 0.30):, :]
+    green_mask = get_color_mask(roi, "VERT")
     kernel = np.ones((3, 3), np.uint8)
     green_mask = cv2.morphologyEx(green_mask, cv2.MORPH_OPEN, kernel)
 
-    # zone devant les roue
-    y_start = int(h * 0.20)
-    green_active = green_mask[y_start:, :]
-
-    contours, _ = cv2.findContours(green_active, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours, _ = cv2.findContours(green_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours:
         return False
 
@@ -52,12 +79,10 @@ def check_green_present(hsv):
     return any(cv2.contourArea(c) >= min_area for c in contours)
 
 
-def detect_line(hsv, target_color):
-    """
-    detecte la ligne en fonction de la target
-    """
-    h, w = hsv.shape[:2]
-    mask = get_color_mask(hsv, target_color)
+def detect_line(bgr, target_color):
+    """Détecte le centre du ruban de la couleur cible et calcule la consigne angulaire."""
+    h, w = bgr.shape[:2]
+    mask = get_color_mask(bgr, target_color)
 
     kernel = np.ones((3, 3), np.uint8)
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
@@ -76,19 +101,14 @@ def detect_line(hsv, target_color):
     if M['m00'] < 10:
         return False, 0.0, 0.0, 0.0
 
-    # milieu de la cam 
     cx = M['m10'] / M['m00']
     cy = M['m01'] / M['m00']
 
-    # decakage par rapport au centre de la cam en pixel
     offset = float(cx - (w / 2.0))
-
-    # Angle de visée vers le centre de la cam depuis la base avant du robot
     dx = cx - (w / 2.0)
     dy = max(h - cy, 10.0)
     angle = float(np.degrees(np.arctan2(dx, dy)))
 
-    # decalage a gauche et a droite 1 -1
     norm_offset = offset / (w / 2.0)
     consigne = float(np.clip(norm_offset * 32.0 + 0.6 * angle, -40.0, 40.0))
 
@@ -98,15 +118,15 @@ def detect_line(hsv, target_color):
 class LineFollower:
     """Gestionnaire de suivi de ligne épuré."""
 
-    GREEN_COOLDOWN_SECONDS = 7.0  # 7 secondes complètes avant de pouvoir re-changer de couleur
+    GREEN_COOLDOWN_SECONDS = 7.0
 
     def __init__(self, initial_target="JAUNE"):
         self.target = initial_target if initial_target in CYCLE_ORDER else "JAUNE"
         self.green_cooldown_until = 0.0
         self.last_consigne = 0.0
-        self.last_turn_dir = 0.0      # Côté où la ligne a été vue : +1.0 (droite), -1.0 (gauche)
+        self.last_turn_dir = 0.0
         self.search_frames = 0
-        self.max_search_frames = 90   # 3 sec de recherche
+        self.max_search_frames = 90
         self.is_searching = False
 
     @property
@@ -114,7 +134,7 @@ class LineFollower:
         return self.target
 
     def cycle_target(self):
-        """passe manuellement à la couleur suivante (touche 'd') avec cooldown de 7s."""
+        """Passe manuellement à la couleur suivante (touche 'd') avec cooldown de 7s."""
         curr = self.current_target
         if curr in CYCLE_ORDER:
             idx = CYCLE_ORDER.index(curr)
@@ -122,7 +142,7 @@ class LineFollower:
         else:
             next_target = "JAUNE"
         self.set_target(next_target)
-        print(f"\n[FOCUS MANUEL 'd'] {curr} -> {self.current_target} (Verrouille 7s)")
+        print(f"\n[FOCUS MANUEL 'd'] {curr} -> {self.current_target} (Verrouillé 7s)")
         return self.current_target
 
     def set_target(self, color):
@@ -139,13 +159,12 @@ class LineFollower:
         Traite une image caméra :
         Retourne : (consigne, is_active, status_str)
         """
-        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         target = self.current_target
         now = time.time()
 
-        # 1. Détection simple du vert : change de couleur si le cooldown de 7s est passé
+        # 1. Détection du vert : transition si le cooldown de 7s est passé
         if now >= self.green_cooldown_until:
-            if check_green_present(hsv):
+            if check_green_present(frame):
                 prev = target
                 idx = CYCLE_ORDER.index(prev) if prev in CYCLE_ORDER else 0
                 next_target = CYCLE_ORDER[(idx + 1) % len(CYCLE_ORDER)]
@@ -154,26 +173,23 @@ class LineFollower:
 
         target = self.current_target
 
-        # 2. Suivi pur de la ligne courante
-        detected, consigne_brute, angle, offset = detect_line(hsv, target)
+        # 2. Suivi de la ligne courante
+        detected, consigne_brute, angle, offset = detect_line(frame, target)
 
         if detected:
             self.search_frames = 0
             self.is_searching = False
 
-            # Mémorise le côté où se trouve la ligne (pour tourner vers elle si perdue)
             if offset > 6.0:
-                self.last_turn_dir = 1.0   # Ligne à droite -> tournera à droite si perdue
+                self.last_turn_dir = 1.0
             elif offset < -6.0:
-                self.last_turn_dir = -1.0  # Ligne à gauche -> tournera à gauche si perdue
+                self.last_turn_dir = -1.0
 
-            # Lissage léger de la consigne
             self.last_consigne = 0.70 * consigne_brute + 0.30 * self.last_consigne
             is_active = True
             status_str = f"[{target}] Ang:{angle:+5.1f}° | Off:{offset:+5.1f}px | Cmd:{self.last_consigne:+5.1f}°"
 
         elif self.last_turn_dir != 0.0 and self.search_frames < self.max_search_frames:
-            # 3. LIGNE PERDUE : tourne pour la retrouver vers le côté où elle était !
             self.search_frames += 1
             self.is_searching = True
             is_active = True
@@ -182,7 +198,6 @@ class LineFollower:
             status_str = f"[{target}] RECHERCHE {direction_str} ({self.search_frames}/{self.max_search_frames}) | Cmd:{self.last_consigne:+5.1f}°"
 
         else:
-            # Timeout de recherche dépassé : arrêt du robot
             self.is_searching = False
             self.last_consigne = 0.0
             self.last_turn_dir = 0.0
