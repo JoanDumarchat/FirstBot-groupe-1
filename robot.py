@@ -128,7 +128,6 @@ class Robot:
             v, omega = self.set_wheel_speeds(cmd)
             dt = (self.ROBOT_ROTATE_CIRC * ( sign * angle ) / 360) / self.WHEEL_CIRC
             time.sleep(dt)
-            self.stop()
             self.update_pose(v, omega, dt)
 
         if distance != 0:
@@ -137,7 +136,6 @@ class Robot:
             v, omega = self.set_wheel_speeds(cmd)
             dist = sign * distance / self.WHEEL_CIRC
             time.sleep(dist)
-            self.stop()
             self.update_pose(v, omega, dist)
 
     def move_s (self, linear_speed, angular_speed):
