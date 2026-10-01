@@ -78,13 +78,10 @@ class Robot:
         self.theta = normalize_angle(math.degrees(theta))
 
     def update_pose_from_wheels(self, dt):
-        """Met à jour x, y, theta à partir de la vitesse réelle des roues (pour move_s).
-        Chaque roue est lue par son vrai ID (gauche = 2, droite = 1) : avec wheel_ids = [1, 2],
-        y sortait inversé (vérifié avec simulateur.py)."""
-        left, right = self.WHEEL_LEFT_ID, self.WHEEL_RIGHT_ID
-        speeds = self.wheels_io.get_present_speed([left, right])
-        v_left = math.radians(speeds[0] * self.WHEEL_MODIFIER[left])
-        v_right = math.radians(speeds[1] * self.WHEEL_MODIFIER[right])
+        """Met à jour x, y, theta à partir de la vitesse réelle des roues (pour move_s)."""
+        speeds = self.wheels_io.get_present_speed(self.wheel_ids)
+        v_left = math.radians(speeds[0] * self.WHEEL_MODIFIER[self.wheel_ids[0]])
+        v_right = math.radians(speeds[1] * self.WHEEL_MODIFIER[self.wheel_ids[1]])
         v, omega = self.direct_kinematics(v_left, v_right)
         self.update_pose(v, math.degrees(omega), dt)
 
