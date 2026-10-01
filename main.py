@@ -6,6 +6,7 @@ from odometry import record_movements
 from robot import Robot
 from drivecam import DriveCam
 from linefollowing_with_cam import LineFollower
+from carte import Carte, dessiner_depuis_fichier
 
 
 def challenge_goto(robot):
@@ -31,7 +32,7 @@ def challenge_odom(robot):
 
 
 def challenge_line_following(robot):
-    """Suivi de ligne caméra autonome (version épurée sans interface web)."""
+    """Suivi de ligne caméra autonome (version épurée sans interface web) + carte."""
     print("\n--- SUIVI DE LIGNE CAMERA ---")
     print("Initialisation de la caméra...")
     backend = cv2.CAP_V4L2 if sys.platform.startswith("linux") else cv2.CAP_ANY
@@ -47,6 +48,11 @@ def challenge_line_following(robot):
     follower = LineFollower(initial_target="JAUNE")
     driver = DriveCam(robot, step_distance=4.0)
 
+    # --- CARTE --- le départ (marqueur vert) est l'origine
+    robot.x, robot.y, robot.theta = 0., 0., 0.
+    carte = Carte(robot)
+    nb_images = 0
+
     print("Suivi autonome en cours (Ctrl+C pour arrêter)...")
     try:
         while True:
@@ -59,7 +65,16 @@ def challenge_line_following(robot):
                 frame = cv2.rotate(frame, cv2.ROTATE_180)
 
             consigne, is_active, status = follower.process_frame(frame)
+
+            # --- CARTE --- point de ligne vu sur cette image (detect_line + pixel_to_world)
+            carte.enregistrer(frame, follower.current_target)
+
             driver.drive_autonome(consigne, is_active)
+
+            # --- CARTE --- redessinée toutes les 50 images : on peut la regarder pendant le parcours
+            nb_images += 1
+            if nb_images % 50 == 0:
+                carte.dessiner("carte.png")
 
             sys.stdout.write(f"\r{status}   ")
             sys.stdout.flush()
@@ -69,9 +84,17 @@ def challenge_line_following(robot):
     finally:
         cap.release()
         driver.stop()
+        # --- CARTE --- enregistrée même après Ctrl-C
+        carte.sauvegarder("parcours.json")
+        carte.dessiner("carte.png")
 
 
 def main():
+    # Redessiner la carte sans robot (marche aussi sur le Mac) : python3 main.py carte
+    if len(sys.argv) > 1 and sys.argv[1] == "carte":
+        dessiner_depuis_fichier("parcours.json", "carte.png")
+        return
+
     ports = pypot.dynamixel.get_available_ports()
 
     if not ports:
@@ -106,7 +129,7 @@ def main():
         elif choix in ("2", "line", "cam"):
             challenge_line_following(robot)
         else:
-            print("Choix inconnu : tape 1 (base) ou 2 (suivi de ligne)")
+            print("Choix inconnu : tape 1 (base), 2 (suivi de ligne) ou carte")
 
     finally:
         robot.stop()
