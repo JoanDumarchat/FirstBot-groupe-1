@@ -1,140 +1,113 @@
-import sys
-import pypot.dynamixel
-import time
+"""
+carte.py - Carte vue du ciel de la piste (challenge 4).
+
+À chaque image du suivi de ligne :
+  1. detect_line (linefollowing_with_cam.py) dit si la ligne est vue et donne son décalage ;
+  2. on retrouve le centre (cx, cy) de la ligne dans l'image ;
+  3. robot.pixel_to_world(cx, cy) place ce point dans la salle (cm),
+     grâce à l'homographie et à la position du robot (odométrie).
+On garde aussi la position du robot (son trajet) à chaque pas.
+"""
+import json
+
 import cv2
-from odometry import record_movements
-from robot import Robot
-from drivecam import DriveCam
-from linefollowing_with_cam import LineFollower
-from carte import Carte, dessiner_depuis_fichier
+import numpy as np
+import matplotlib
+matplotlib.use("Agg")          # pas d'écran sur le Raspberry Pi : on dessine dans un fichier
+import matplotlib.pyplot as plt
+
+from linefollowing_with_cam import detect_line, get_color_mask
+
+COULEURS_TRACE = {"JAUNE": "gold", "BLEU": "tab:blue", "ROUGE": "tab:red", "VERT": "tab:green"}
 
 
-def challenge_goto(robot):
-    print("Position initiale :")
-    print(f"x={robot.x}, y={robot.y}, theta={robot.theta}")
+def centre_ligne(hsv, couleur):
+    """Centre (cx, cy) en pixels de la ligne détectée par detect_line, ou None.
+    cx vient directement de detect_line (offset + w/2) ; cy est calculé sur le même contour."""
+    h, w = hsv.shape[:2]
+    detected, consigne, angle, offset = detect_line(hsv, couleur)
+    if not detected:
+        return None
+    cx = offset + w / 2.0
 
-    # Aller à x=30 cm, y=0 cm, theta=90°
-    robot.go_to_xya(100, 50, 90)
-    print (robot.x,robot.y)
-    print (robot.theta)
-
-    robot.go_to_xya(0, 0, 0)
-
-    print("Position finale :")
-    print(f"x={robot.x:.2f}, y={robot.y:.2f}, theta={robot.theta:.2f}")
-
-
-def challenge_odom(robot):
-    robot.wheels_io.disable_torque(robot.wheel_ids)
-    robot.x, robot.y, robot.theta = 0., 0., 0.
-    print("Roues libres : pousse le robot, puis Ctrl-C")
-    print(record_movements(robot))
+    # même masque et même plus grand contour que dans detect_line, pour avoir cy
+    mask = get_color_mask(hsv, couleur)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 9)))
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    c = max(contours, key=cv2.contourArea)
+    M = cv2.moments(c)
+    cy = M["m01"] / M["m00"]
+    return cx, cy
 
 
-def challenge_line_following(robot):
-    """Suivi de ligne caméra autonome (version épurée sans interface web) + carte."""
-    print("\n--- SUIVI DE LIGNE CAMERA ---")
-    print("Initialisation de la caméra...")
-    backend = cv2.CAP_V4L2 if sys.platform.startswith("linux") else cv2.CAP_ANY
-    cap = cv2.VideoCapture(0, backend)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
-    time.sleep(0.5)
-
-    if not cap.isOpened():
-        print("[ERREUR] Impossible d'ouvrir la caméra.")
-        return
-
-    follower = LineFollower(initial_target="JAUNE")
-    driver = DriveCam(robot, step_distance=4.0)
-
-    # --- CARTE --- le départ (marqueur vert) est l'origine
-    robot.x, robot.y, robot.theta = 0., 0., 0.
-    carte = Carte(robot)
-    nb_images = 0
-
-    print("Suivi autonome en cours (Ctrl+C pour arrêter)...")
-    try:
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                break
-
-            # Remise à l'endroit si caméra montée tête en bas sur le châssis
-            if sys.platform.startswith("linux"):
-                frame = cv2.rotate(frame, cv2.ROTATE_180)
-
-            consigne, is_active, status = follower.process_frame(frame)
-
-            # --- CARTE --- point de ligne vu sur cette image (detect_line + pixel_to_world)
-            carte.enregistrer(frame, follower.current_target)
-
-            driver.drive_autonome(consigne, is_active)
-
-            # --- CARTE --- redessinée toutes les 50 images : on peut la regarder pendant le parcours
-            nb_images += 1
-            if nb_images % 50 == 0:
-                carte.dessiner("carte.png")
-
-            sys.stdout.write(f"\r{status}   ")
-            sys.stdout.flush()
-
-    except KeyboardInterrupt:
-        print("\n[INFO] Arrêt du suivi de ligne demandé.")
-    finally:
-        cap.release()
-        driver.stop()
-        # --- CARTE --- enregistrée même après Ctrl-C
-        carte.sauvegarder("parcours.json")
-        carte.dessiner("carte.png")
+def angle_robot(robot):
+    """Angle du robot (theta ou teta selon la version de robot.py)."""
+    return getattr(robot, "theta", getattr(robot, "teta", 0.0))
 
 
-def main():
-    # Redessiner la carte sans robot (marche aussi sur le Mac) : python3 main.py carte
-    if len(sys.argv) > 1 and sys.argv[1] == "carte":
-        dessiner_depuis_fichier("parcours.json", "carte.png")
-        return
+class Carte:
+    def __init__(self, robot):
+        self.robot = robot
+        self.points_ligne = []   # [couleur, x, y] : points de la ligne vus par la caméra (cm)
+        self.trajet = []         # [couleur, x, y] : position du robot à chaque pas (cm)
 
-    ports = pypot.dynamixel.get_available_ports()
+    def enregistrer(self, frame, couleur):
+        """À appeler à chaque image, avec l'image donnée à process_frame et la couleur suivie."""
+        self.trajet.append([couleur, float(self.robot.x), float(self.robot.y)])
 
-    if not ports:
-        exit("No port")
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        pixel = centre_ligne(hsv, couleur)
+        if pixel is not None:
+            x, y = self.robot.pixel_to_world(*pixel)
+            self.points_ligne.append([couleur, float(x), float(y)])
 
-    dxl_io = pypot.dynamixel.DxlIO(ports[0])
-    found_ids = dxl_io.scan(range(10))
+    def sauvegarder(self, fichier="parcours.json"):
+        with open(fichier, "w") as f:
+            json.dump({"points_ligne": self.points_ligne, "trajet": self.trajet}, f)
+        print(f"\nParcours enregistré dans {fichier} ({len(self.points_ligne)} points de ligne)")
 
-    print(f"Found motors with IDs: {found_ids}")
+    def dessiner(self, fichier="carte.png"):
+        plt.figure(figsize=(7, 7))
+        for nom, trace in COULEURS_TRACE.items():
+            xs, ys = [], []
+            precedent = None
+            for c, x, y in self.points_ligne:
+                if c != nom:
+                    continue
+                # si le point est loin du précédent (> 10 cm), on coupe la ligne (nan = trou)
+                if precedent and ((x - precedent[0]) ** 2 + (y - precedent[1]) ** 2) ** 0.5 > 10:
+                    xs.append(float("nan"))
+                    ys.append(float("nan"))
+                xs.append(x)
+                ys.append(y)
+                precedent = (x, y)
+            if xs:
+                plt.plot(xs, ys, "-", color=trace, linewidth=3, label=nom)
+        if self.trajet:
+            xs, ys = zip(*[(x, y) for c, x, y in self.trajet])
+            plt.plot(xs, ys, "-", color="grey", linewidth=0.8, label="trajet du robot")
+        plt.plot(0, 0, "k^", markersize=10, label="départ")
+        plt.axis("equal")
+        plt.grid(True)
+        plt.xlabel("x (cm)")
+        plt.ylabel("y (cm)")
+        plt.legend()
+        plt.title("Carte de la piste (vue du ciel)")
+        plt.savefig(fichier, dpi=150)
+        plt.close()
+        print(f"Carte dessinée dans {fichier}")
 
-    if len(found_ids) < 2:
-        exit("Port opened, but motors did not respond. Check batteries")
 
-    robot = Robot(dxl_io, found_ids[:2])
-    robot.wheels_io.set_wheel_mode(robot.wheel_ids)
-
-    choix = sys.argv[1] if len(sys.argv) > 1 else input("1: Base (goto/odom) ou 2: Suivi de ligne ? ")
-
-    try:
-        if choix in ("1", "base"):
-            sub_choix = input("goto ou odom ? ")
-            if sub_choix == "goto":
-                challenge_goto(robot)
-            elif sub_choix == "odom":
-                challenge_odom(robot)
-            else:
-                print("Choix inconnu : tape goto ou odom")
-        elif choix == "goto":
-            challenge_goto(robot)
-        elif choix == "odom":
-            challenge_odom(robot)
-        elif choix in ("2", "line", "cam"):
-            challenge_line_following(robot)
-        else:
-            print("Choix inconnu : tape 1 (base), 2 (suivi de ligne) ou carte")
-
-    finally:
-        robot.stop()
-        robot.wheels_io.disable_torque(robot.wheel_ids)
+def dessiner_depuis_fichier(fichier="parcours.json", sortie="carte.png"):
+    """Redessine la carte à partir du fichier, sans robot : python3 carte.py"""
+    carte = Carte(robot=None)
+    with open(fichier) as f:
+        data = json.load(f)
+    carte.points_ligne = data["points_ligne"]
+    carte.trajet = data["trajet"]
+    carte.dessiner(sortie)
 
 
 if __name__ == "__main__":
-    main()
+    dessiner_depuis_fichier()
