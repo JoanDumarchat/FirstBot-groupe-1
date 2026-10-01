@@ -1,30 +1,18 @@
-"""
-drivecam.py - Module de pilotage moteur asservi par la caméra.
-
-Reçoit l'angle et la consigne calculés par la caméra et commande le Robot (robot.py) :
-- En autonome : utilise move_s(linear_speed, angular_speed) pour un suivi fluide sans à-coups.
-- En manuel : avance, recule ou pivote continuellement tant que la touche/bouton est maintenu.
-- En pause : stoppe immédiatement les moteurs.
-"""
-
 import math
 import numpy as np
 
 
 class DriveCam:
-    """Pilote le robot à partir des informations de vision de la caméra."""
-
     def __init__(self, robot, step_distance=4.0, **kwargs):
         """
-        :param robot:         Instance de Robot (robot.py)
-        :param step_distance: Distance d'avance indicative
+        :param robot:       
+        :param step_distance: 
         """
         self.robot = robot
         self.step_distance = step_distance
 
     def drive_autonome(self, consigne, is_active, is_searching=False, transition_boost=0, v_effective=7.0):
         """
-        Asservissement continu par move_s(linear_speed, angular_speed) :
         - consigne : angle en degrés (>0 droite, <0 gauche)
         - is_active : True si la ligne est détectée
         - v_effective : vitesse linéaire en cm/s
@@ -33,13 +21,11 @@ class DriveCam:
             self.robot.stop()
             return
 
-        # Gain d'asservissement angulaire inversé pour correspondre au sens physique du robot :
-        # consigne > 0 (cible à droite) -> angular_speed > 0 (tourne à droite)
-        # consigne < 0 (cible à gauche) -> angular_speed < 0 (tourne à gauche)
+        # gain angulaire inversé pour correspondre au sens physique du robot
         consigne_rad = math.radians(float(consigne))
         angular_speed = consigne_rad * 1.6
 
-        # Si le robot cherche la ligne (perdue temporairement), il pivote sur place
+        # si le robot cherche la ligne (perdue temporairement), il pivote sur place
         if is_searching:
             linear_speed = 0.0
             angular_speed = float(np.sign(angular_speed) * 1.8) if angular_speed != 0 else -1.8
@@ -58,15 +44,11 @@ class DriveCam:
                 self.robot.move_forward_d(self.step_distance)
 
     def drive_pause(self, manual_dir=None):
-        """Met le robot en arrêt lors de la pause."""
         self.robot.stop()
         return "ROBOT EN PAUSE"
 
     def drive_manuel(self, manual_dir, v_effective=7.0):
-        """
-        Pilotage manuel continu tant que la touche/bouton est maintenu :
-        utilise move_s pour un déplacement fluide sans arrêt après 1 pas.
-        """
+
         spd = float(v_effective) if v_effective else 7.0
 
         if not manual_dir:
@@ -104,5 +86,4 @@ class DriveCam:
         return "MANUEL ARRET"
 
     def stop(self):
-        """Arrêt immédiat des moteurs."""
         self.robot.stop()

@@ -1,13 +1,3 @@
-"""
-carte.py - Carte vue du ciel de la piste (challenge 4).
-
-À chaque image du suivi de ligne :
-  1. detect_line (linefollowing_with_cam.py) dit si la ligne est vue et donne son décalage ;
-  2. on retrouve le centre (cx, cy) de la ligne dans l'image ;
-  3. robot.pixel_to_world(cx, cy) place ce point dans la salle (cm),
-     grâce à l'homographie et à la position du robot (odométrie).
-On garde aussi la position du robot (son trajet) à chaque pas.
-"""
 import sys
 import time
 
@@ -76,7 +66,7 @@ def challenge_line_following(robot):
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
 
-    # Désactivation de l'AWB et fixation d'une température neutre (4200K)
+    # Désactivation de l'AWB et fixation d'une température neutre (4200K) pour la cam
     cap.set(cv2.CAP_PROP_AUTO_WB, 0)
     cap.set(cv2.CAP_PROP_WB_TEMPERATURE, 4200)
     if sys.platform.startswith("linux"):
@@ -87,7 +77,7 @@ def challenge_line_following(robot):
                 "-c", "white_balance_automatic=0",
                 "-c", "white_balance_temperature=4200"
             ], capture_output=True, check=False)
-            print("[*] Balance des blancs verrouillée à 4200K (AWB désactivé).")
+            print("[*] config cam on")
         except Exception:
             pass
 
@@ -176,12 +166,12 @@ def challenge_line_following(robot):
 
 
 def main():
-    # Redessiner la carte sans robot (marche aussi sur le Mac) : python3 main.py carte
+    # Redessiner la carte sans robot : python3 main.py carte
     if len(sys.argv) > 1 and sys.argv[1] == "carte":
         dessiner_depuis_fichier("parcours.json", "carte.png")
         return
 
-    import pypot.dynamixel   # seulement sur le robot (pas besoin sur le Mac pour la carte)
+    import pypot.dynamixel   # seulement sur le robot
     ports = pypot.dynamixel.get_available_ports()
 
     if not ports:

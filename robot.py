@@ -139,11 +139,6 @@ class Robot:
             self.update_pose(v, omega, dist)
 
     def move_s (self, linear_speed, angular_speed):
-        """
-        Déplacement en vitesse continue :
-        - linear_speed : vitesse d'avance (cm/s)
-        - angular_speed : vitesse de rotation (rad/s ou deg/s)
-        """
         omega_rad = angular_speed
         if abs(angular_speed) > 3.15:
             omega_rad = math.radians(angular_speed)

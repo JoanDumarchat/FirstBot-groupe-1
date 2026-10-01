@@ -1,11 +1,3 @@
-"""
-linefollowing_with_cam.py - Algorithme de suivi de ligne épuré (version sans affichage graphique).
-
-- Détection des couleurs avec masques BGR/HSV int16 calibrés (AWB 4200K).
-- Persistance axiale dans le couloir : maintient le cap tout droit lors des croisements / croix.
-- Transition automatique sur balise verte avec temporisation de 7 secondes.
-"""
-
 import cv2
 import numpy as np
 import time
@@ -15,18 +7,16 @@ CYCLE_ORDER = ["VERT", "JAUNE", "BLEU", "ROUGE"]
 
 
 def get_color_mask(bgr, color):
-    """Génère le masque binaire précis pour chaque couleur du circuit."""
     hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
     h, s, v = cv2.split(hsv)
     b, g, r = cv2.split(bgr)
 
-    # Conversion int16 pour éviter les débordements uint8
+    # evite les debordmene uint8
     r_i = r.astype(np.int16)
     g_i = g.astype(np.int16)
     b_i = b.astype(np.int16)
 
     if color == "JAUNE":
-        # Bande jaune centrale : R et G nettement supérieurs à B, S modérée (jaune clair/pastel)
         mask = (
             (h >= 12) & (h <= 45) &
             (s >= 35) & (v >= 50) &
@@ -35,7 +25,6 @@ def get_color_mask(bgr, color):
         return mask.astype(np.uint8) * 255
 
     elif color == "VERT":
-        # Vert haut droite (aspect sarcelle/teal sur la cam) : H monte jusqu'à 98
         mask = (
             (h >= 60) & (h <= 98) &
             (s >= 60) & (v >= 40) &
@@ -44,7 +33,6 @@ def get_color_mask(bgr, color):
         return mask.astype(np.uint8) * 255
 
     elif color == "BLEU":
-        # Bande bleue centrale : B très dominant, S >= 110 pour rejeter le sol gris bleuté
         mask = (
             (h >= 99) & (h <= 135) &
             (s >= 110) & (v >= 50) &
@@ -53,7 +41,6 @@ def get_color_mask(bgr, color):
         return mask.astype(np.uint8) * 255
 
     elif color == "ROUGE":
-        # Rouge haut gauche : moins saturé que le bleu, split 0-12 et 155-180
         mask = (
             ((h <= 12) | (h >= 155)) &
             (s >= 50) & (v >= 40) &
@@ -65,7 +52,6 @@ def get_color_mask(bgr, color):
 
 
 def check_green_present(bgr):
-    """Détecte la présence de la bande verte devant le robot."""
     h, w = bgr.shape[:2]
     roi = bgr[int(h * 0.30):, :]
     green_mask = get_color_mask(roi, "VERT")
@@ -81,8 +67,6 @@ def check_green_present(bgr):
 
 
 class LineFollower:
-    """Suiveur de ligne caméra épuré avec persistance axiale."""
-
     GREEN_COOLDOWN_SECONDS = 7.0
     CORRIDOR_HALF_WIDTH = 45  # Demi-largeur du couloir de suivi axiale (px)
 
@@ -137,7 +121,6 @@ class LineFollower:
         print(f"\n[TRANSITION BOUCLE] {prev} -> {self.current_target} (Verrouillé 7s)")
 
     def cycle_target(self):
-        """Passe manuellement à la couleur suivante (touche 'd') avec cooldown de 7s."""
         self.advance_to_next_target(time.time())
         return self.current_target
 
@@ -147,13 +130,6 @@ class LineFollower:
         self.tracked_line_x = None
 
     def process_frame(self, frame, current_time_sec=None):
-        """
-        Traite une image :
-        - Détection de départ au vert.
-        - Persistance axiale dans le couloir (ignore les croisements).
-        - Transition verte après cooldown de 7s.
-        Retourne : (consigne, is_active, status_str)
-        """
         if current_time_sec is None:
             current_time_sec = time.time()
 
@@ -161,8 +137,6 @@ class LineFollower:
         target = self.current_target
         base_x = int(w / 2.0)
         base_y = int(h)
-
-        # 0. ÉTAT DE DÉPART : Attend le vert initial pour partir sur JAUNE
         if target == "DEPART":
             if check_green_present(frame):
                 self.advance_to_next_target(current_time_sec)
@@ -171,7 +145,7 @@ class LineFollower:
             if target == "DEPART":
                 return 0.0, False, "[DEPART] En attente du vert..."
 
-        # 1. TRANSITION VERTE EN COURS (après cooldown 7s)
+        # transition verte en cours apres cd
         if current_time_sec >= self.green_cooldown_until_sec:
             if check_green_present(frame):
                 self.advance_to_next_target(current_time_sec)
@@ -180,13 +154,13 @@ class LineFollower:
         if target == "FIN":
             return 0.0, False, "[FIN] Parcours terminé"
 
-        # 2. Masque binaire de la couleur active
+        # masque binaire de la couleur active
         mask = get_color_mask(frame, target)
         kernel = np.ones((3, 3), np.uint8)
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
         mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5)))
 
-        # Détection initiale de la ligne si pas encore fixée
+        # detection de la ligne
         if self.tracked_line_x is None:
             init_roi = mask[int(0.20 * h):int(0.95 * h), :]
             conts, _ = cv2.findContours(init_roi, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -200,7 +174,7 @@ class LineFollower:
         is_straight_continuation = False
 
         if self.tracked_line_x is not None:
-            # 3. TEST DE PERSISTANCE DE LA LIGNE DROITE DANS LE COULOIR (0.15h à 0.90h)
+            #test pour si la ligne boucle sur elle meme
             corr_x1 = max(0, self.tracked_line_x - self.CORRIDOR_HALF_WIDTH)
             corr_x2 = min(w, self.tracked_line_x + self.CORRIDOR_HALF_WIDTH)
             corridor_ahead = mask[int(0.15 * h):int(0.90 * h), corr_x1:corr_x2]
@@ -235,7 +209,7 @@ class LineFollower:
                 }
 
             else:
-                # 4. Virage ou fin de la ligne droite
+                #check virage ou fin de la ligne droite
                 contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                 valid = [c for c in contours if cv2.contourArea(c) >= 200]
                 if valid:
@@ -299,10 +273,6 @@ class LineFollower:
 
 
 def detect_line(bgr, color):
-    """
-    Fonction de détection de ligne isolée pour la rétrocompatibilité (ex: carte.py).
-    Retourne : (detected, consigne, angle, offset)
-    """
     h, w = bgr.shape[:2]
     base_x = int(w / 2.0)
     base_y = int(h)
