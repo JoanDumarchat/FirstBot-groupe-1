@@ -7,49 +7,41 @@ PATH_ORDER = ["DEPART", "JAUNE", "BLEU", "ROUGE", "FIN"]
 
 def get_color_mask(bgr, color):
     hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
-
     h, s, v = cv2.split(hsv)
 
-    # v (luminosité) minimum : dans les zones sombres la teinte h n'a plus de sens
+    # Conversion avant les additions pour éviter les débordements uint8.
+    b, g, r = cv2.split(bgr.astype(np.int16))
+
     if color == "JAUNE":
         mask = (
-            (h >= 15) &
-            (h <= 40) &
-            (s >= 50) &
-            (v >= 60)
+            (h >= 12) & (h <= 45) &
+            (s >= 35) & (v >= 50) &
+            (r > b + 15) & (g > b + 10)
         )
 
     elif color == "VERT":
         mask = (
-            (h >= 55) &
-            (h <= 95) &
-            (s >= 60) &
-            (v >= 40)
+            (h >= 60) & (h <= 98) &
+            (s >= 60) & (v >= 40) &
+            (g > r + 20) & (b < 190)
         )
 
     elif color == "BLEU":
         mask = (
-            (h >= 100) &
-            (h <= 135) &
-            (s >= 80) &
-            (v >= 40)
+            (h >= 99) & (h <= 135) &
+            (s >= 110) & (v >= 50) &
+            (b > r + 40) & (b > g + 15)
         )
 
     elif color == "ROUGE":
         mask = (
-            (
-                (h <= 10) |
-                (h >= 155)
-            ) &
-            (s >= 60) &
-            (v >= 50)
+            ((h <= 12) | (h >= 155)) &
+            (s >= 50) & (v >= 40) &
+            (r > g + 25) & (r > b + 25)
         )
 
     else:
-        return np.zeros(
-            bgr.shape[:2],
-            dtype=np.uint8
-        )
+        return np.zeros(bgr.shape[:2], dtype=np.uint8)
 
     return mask.astype(np.uint8) * 255
 
@@ -265,14 +257,19 @@ class LineFollower:
             corridor_ahead = mask[int(0.15 * h):int(0.90 * h), corr_x1:corr_x2]
             ahead_pixel_count = np.count_nonzero(corridor_ahead)
 
-            if ahead_pixel_count >= 150:
+            y_look = int(0.50 * h)
+            look_strip = mask[
+                max(0, y_look - 20):min(h, y_look + 20),
+                corr_x1:corr_x2
+            ]
+            pts = np.argwhere(look_strip > 0)
+
+            if ahead_pixel_count >= 150 and len(pts) > 0:
                 is_straight_continuation = True
-                y_look = int(0.50 * h)
-                look_strip = mask[max(0, y_look - 20):min(h, y_look + 20), corr_x1:corr_x2]
-                pts = np.argwhere(look_strip > 0)
-                if len(pts):
-                    local_cx = int(np.mean(pts[:, 1])) + corr_x1
-                    self.tracked_line_x = int(0.75 * local_cx + 0.25 * self.tracked_line_x)
+                local_cx = int(np.mean(pts[:, 1])) + corr_x1
+                self.tracked_line_x = int(
+                    0.75 * local_cx + 0.25 * self.tracked_line_x
+                )
 
                 target_cx = self.tracked_line_x
                 target_cy = y_look
