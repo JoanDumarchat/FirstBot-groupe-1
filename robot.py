@@ -79,7 +79,7 @@ class Robot:
 
     def update_pose_from_wheels(self, dt):
         """Met à jour x, y, theta à partir de la vitesse réelle des roues (pour move_s)."""
-        speeds = self.wheels_io.get_present_speed(self.wheel_ids)
+        speeds = self.wheels_io.get_moving_speed(self.wheel_ids)
         v_left = math.radians(speeds[0] * self.WHEEL_MODIFIER[self.wheel_ids[0]])
         v_right = math.radians(speeds[1] * self.WHEEL_MODIFIER[self.wheel_ids[1]])
         v, omega = self.direct_kinematics(v_left, v_right)
