@@ -82,14 +82,16 @@ def challenge_line_following(robot):
 
     # Désactivation de l'AWB et fixation d'une température neutre (4200K) pour la cam
     cap.set(cv2.CAP_PROP_AUTO_WB, 0)
-    cap.set(cv2.CAP_PROP_WB_TEMPERATURE, 4200)
+    cap.set(cv2.CAP_PROP_WB_TEMPERATURE, 5000)
+    cap.set(cv2.CAP_PROP_SATURATION, 80)
     if sys.platform.startswith("linux"):
         try:
             import subprocess
             subprocess.run([
                 "v4l2-ctl", "-d", "/dev/video0",
                 "-c", "white_balance_automatic=0",
-                "-c", "white_balance_temperature=4200"
+                "-c", "white_balance_temperature=5000",
+                "-c", "saturation=80"
             ], capture_output=True, check=False)
             print("[*] config cam on")
         except Exception:
