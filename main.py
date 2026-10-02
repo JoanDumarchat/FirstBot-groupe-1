@@ -1,3 +1,4 @@
+import math
 import sys
 import time
 
@@ -8,6 +9,16 @@ from drivecam import DriveCam
 from linefollowing_with_cam import LineFollower
 from carte import Carte, dessiner_depuis_fichier
 from aveugle import tour_aveugle
+
+
+def mise_a_jour_position(robot, dt):
+    """Odométrie pendant le suivi : vitesse mesurée des roues → (v, ω) → x, y, theta.
+    Fait ici dans main.py pour ne pas dépendre de la version de robot.py."""
+    speeds = robot.wheels_io.get_present_speed(robot.wheel_ids)
+    v_left = math.radians(speeds[0] * robot.WHEEL_MODIFIER[robot.wheel_ids[0]])
+    v_right = math.radians(speeds[1] * robot.WHEEL_MODIFIER[robot.wheel_ids[1]])
+    v, omega = robot.direct_kinematics(v_left, v_right)
+    robot.update_pose(v, math.degrees(omega), dt)
 
 
 def challenge_goto(robot):
@@ -125,7 +136,7 @@ def challenge_line_following(robot):
 
             # --- ODOMÉTRIE --- move_s ne met pas à jour la position : on le fait ici
             now = time.perf_counter()
-            robot.update_pose_from_wheels(now - last_time)
+            mise_a_jour_position(robot, now - last_time)
             last_time = now
 
             term_chars = check_terminal_keys()
