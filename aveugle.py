@@ -14,19 +14,26 @@ MAX_VIRAGE = 60.0  # degrés : un point qui demande de tourner plus que ça est 
 
 
 def charger_points(fichier="parcours.json", couleur=None):
-    """Points (x, y) de la ligne, dans l'ordre où ils ont été vus, un tous les PAS cm."""
+    """Points (x, y) de la ligne, lissés, un tous les PAS cm."""
     with open(fichier) as f:
         data = json.load(f)
 
+    # 1. on garde les points de la couleur demandée
+    brut = [(x, y) for c, x, y in data["points_ligne"] if couleur is None or c == couleur]
+
+    # 2. lissage : chaque point = moyenne de ses 5 voisins (enlève le zigzag)
+    lisse = []
+    for i in range(len(brut)):
+        voisins = brut[max(0, i - 2): i + 3]
+        lisse.append((sum(p[0] for p in voisins) / len(voisins),
+                      sum(p[1] for p in voisins) / len(voisins)))
+
+    # 3. comme avant : un point tous les PAS cm, sans demi-tour
     points = [(0.0, 0.0)]
-    direction = 0.0   # direction du robot au départ (degrés)
-    for c, x, y in data["points_ligne"]:
-        if couleur is not None and c != couleur:
-            continue
-        # 1. trop près du dernier point gardé : on l'ignore
+    direction = 0.0
+    for x, y in lisse:
         if math.dist(points[-1], (x, y)) < PAS:
             continue
-        # 2. il faudrait faire demi-tour pour y aller (point vu pendant une recherche) : on l'ignore
         nouvelle = math.degrees(math.atan2(y - points[-1][1], x - points[-1][0]))
         virage = (nouvelle - direction + 180) % 360 - 180
         if abs(virage) > MAX_VIRAGE:

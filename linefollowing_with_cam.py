@@ -8,36 +8,41 @@ PATH_ORDER = ["DEPART", "JAUNE", "BLEU", "ROUGE", "FIN"]
 def get_color_mask(bgr, color):
     hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
 
-    h, s, _ = cv2.split(hsv)
+    h, s, v = cv2.split(hsv)
 
+    # v (luminosité) minimum : dans les zones sombres la teinte h n'a plus de sens
     if color == "JAUNE":
         mask = (
             (h >= 15) &
             (h <= 40) &
-            (s >= 70)
+            (s >= 50) &
+            (v >= 60)
         )
 
     elif color == "VERT":
         mask = (
-            (h >= 60) &
+            (h >= 55) &
             (h <= 95) &
-            (s >= 70)
+            (s >= 60) &
+            (v >= 40)
         )
 
     elif color == "BLEU":
         mask = (
             (h >= 100) &
             (h <= 135) &
-            (s >= 80)
+            (s >= 80) &
+            (v >= 40)
         )
 
     elif color == "ROUGE":
         mask = (
             (
                 (h <= 10) |
-                (h >= 170)
+                (h >= 155)
             ) &
-            (s >= 70)
+            (s >= 60) &
+            (v >= 50)
         )
 
     else:
@@ -160,7 +165,7 @@ class LineFollower:
         self.last_consigne = 0.0
         self.current_angle = 0.0
         self.tracked_line_x = None
-        self.last_turn_dir = 0.0
+        self.last_turn_dir = 1.0      # si la ligne n'est pas vue au départ : on la cherche (au lieu de s'arrêter)
         self.search_frames = 0
         self.max_search_frames = 90
         self.is_searching = False
@@ -194,7 +199,7 @@ class LineFollower:
         self.last_consigne = 0.0
         self.current_angle = 0.0
         self.tracked_line_x = None
-        self.last_turn_dir = 0.0
+        # last_turn_dir gardé : si la nouvelle ligne n'est pas vue après la poussée, on la cherche
         self.search_frames = 0
         self.is_searching = False
         print(f"\n[TRANSITION BOUCLE] {prev} -> {self.current_target} (Poussée avance 1.8s)")

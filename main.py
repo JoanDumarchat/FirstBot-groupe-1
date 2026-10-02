@@ -66,6 +66,7 @@ def challenge_line_following(robot):
     cap = cv2.VideoCapture(0, backend)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)   # garder seulement l'image la plus récente (moins de retard)
 
     # Désactivation de l'AWB et fixation d'une température neutre (4200K) pour la cam
     cap.set(cv2.CAP_PROP_AUTO_WB, 0)
@@ -87,6 +88,10 @@ def challenge_line_following(robot):
     if not cap.isOpened():
         print("[ERREUR] Impossible d'ouvrir la caméra.")
         return
+
+    # on jette les premières images : la caméra règle encore sa lumière et ses couleurs
+    for _ in range(10):
+        cap.read()
 
     follower = LineFollower(initial_target="VERT")
     driver = DriveCam(robot, step_distance=4.0)
