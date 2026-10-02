@@ -168,12 +168,12 @@ class LineFollower:
             x2 = min(w, self.tracked_line_x + self.CORRIDOR_HALF_WIDTH)
 
             # 6a. LIGNE DROITE : la ligne continue dans le couloir → on la suit (ignore les croisements)
-            if np.count_nonzero(mask[int(0.15 * h):int(0.90 * h), x1:x2]) >= 150:
-                y_look = int(0.50 * h)
-                pts = np.argwhere(mask[max(0, y_look - 20):min(h, y_look + 20), x1:x2] > 0)
-                if len(pts):
-                    local_cx = int(np.mean(pts[:, 1])) + x1
-                    self.tracked_line_x = int(0.75 * local_cx + 0.25 * self.tracked_line_x)   # lissage
+            ahead_pixels = np.count_nonzero(mask[int(0.15 * h):int(0.90 * h), x1:x2])
+            y_look = int(0.50 * h)
+            pts = np.argwhere(mask[max(0, y_look - 20):min(h, y_look + 20), x1:x2] > 0)
+            if ahead_pixels >= 150 and len(pts) > 0:
+                local_cx = int(np.mean(pts[:, 1])) + x1
+                self.tracked_line_x = int(0.75 * local_cx + 0.25 * self.tracked_line_x)   # lissage
                 chosen = self._consigne(self.tracked_line_x, y_look, w, h)
                 mode = "LIGNE DROITE"
 
@@ -200,10 +200,9 @@ class LineFollower:
                 self.last_turn_dir = -1.0
             self.current_angle = 0.75 * angle + 0.25 * self.current_angle
             self.last_consigne = 0.70 * consigne + 0.30 * self.last_consigne
-            if abs(self.last_consigne) < self.DEAD_ZONE:
-                self.last_consigne = 0.0
-            return (self.last_consigne, True,
-                    f"[{target}:{mode}] Ang:{angle:+5.1f}° | Off:{offset:+5.1f}px | Cmd:{self.last_consigne:+5.1f}°")
+            commande = 0.0 if abs(self.last_consigne) < self.DEAD_ZONE else self.last_consigne
+            return (commande, True,
+                    f"[{target}:{mode}] Ang:{angle:+5.1f}° | Off:{offset:+5.1f}px | Cmd:{commande:+5.1f}°")
 
         # 8. ligne pas trouvée juste après le vert : tout droit
         self.last_consigne = 0.0
