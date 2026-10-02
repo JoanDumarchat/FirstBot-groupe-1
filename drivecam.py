@@ -10,6 +10,7 @@ class DriveCam:
         """
         self.robot = robot
         self.step_distance = step_distance
+        self.gain = 1.0   # force des corrections (avant 1.6) ; réglable au clavier avec g / h
 
     def drive_autonome(self, consigne, is_active, is_searching=False, transition_boost=0, v_effective=7.0):
         """
@@ -23,7 +24,7 @@ class DriveCam:
 
         # gain angulaire inversé pour correspondre au sens physique du robot
         consigne_rad = math.radians(float(consigne))
-        angular_speed = consigne_rad * 1.6
+        angular_speed = consigne_rad * self.gain   # gain baissé (1.6 → 1.0) : corrections plus douces, moins d'oscillation
 
         # si le robot cherche la ligne (perdue temporairement), il pivote sur place
         if is_searching:

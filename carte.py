@@ -1,4 +1,15 @@
+"""
+carte.py - Carte vue du ciel de la piste (challenge 4).
+
+À chaque image du suivi de ligne :
+  1. detect_line (ci-dessous) trouve le centre (cx, cy) de la ligne dans l'image, si elle est vue
+     (avec le masque de couleur get_color_mask de linefollowing_with_cam.py) ;
+  2. robot.pixel_to_world(cx, cy) place ce point dans la salle (cm),
+     grâce à l'homographie et à la position du robot (odométrie).
+On garde aussi la position du robot (son trajet) à chaque pas.
+"""
 import json
+
 import cv2
 import numpy as np
 import matplotlib
@@ -63,6 +74,8 @@ class Carte:
             for c, x, y in self.points_ligne:
                 if c != nom:
                     continue
+                if precedent and ((x - precedent[0]) ** 2 + (y - precedent[1]) ** 2) ** 0.5 < 2:
+                    continue            # trop près du point précédent (< 2 cm) : ignoré → moins de zigzag
                 # si le point est loin du précédent (> 10 cm), on coupe la ligne (nan = trou)
                 if precedent and ((x - precedent[0]) ** 2 + (y - precedent[1]) ** 2) ** 0.5 > 10:
                     xs.append(float("nan"))
@@ -77,9 +90,10 @@ class Carte:
             plt.plot(ys, xs, "-", color="grey", linewidth=0.8, label="trajet du robot")
         plt.plot(0, 0, "k^", markersize=10, label="départ")
         plt.axis("equal")
+        plt.gca().invert_xaxis()        # y positif (gauche du robot) affiché à gauche : vraie vue du ciel
         plt.grid(True)
-        plt.xlabel("x (cm)")
-        plt.ylabel("y (cm)")
+        plt.xlabel("y (cm)  ← gauche | droite →")
+        plt.ylabel("x (cm)  (avant ↑)")
         plt.legend()
         plt.title("Carte de la piste (vue du ciel)")
         plt.savefig(fichier, dpi=150)

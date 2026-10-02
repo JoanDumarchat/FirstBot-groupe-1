@@ -1,45 +1,37 @@
+"""
+linefollowing_with_cam.py - Suivi de ligne avec la caméra (challenge 1).
+
+- get_color_mask      : trouve une couleur dans l'image (masque noir/blanc)
+- check_green_present : le marqueur vert est-il devant le robot ?
+- LineFollower        : décide de combien tourner (consigne en degrés) à chaque image,
+                        et change de couleur à chaque marqueur vert : DEPART → JAUNE → BLEU → ROUGE → JAUNE …
+"""
+import time
+
 import cv2
 import numpy as np
-import time
 
 PATH_ORDER = ["DEPART", "JAUNE", "BLEU", "ROUGE", "FIN"]
 
 
+# ------------------------------------------------------------------ couleurs
 def get_color_mask(bgr, color):
+    """Masque noir/blanc (255 = la couleur est là) à partir de l'image BGR.
+    h = teinte (0..179), s = saturation (couleur vive ou grise), v = luminosité.
+    v minimum : dans les zones sombres la teinte n'a plus de sens."""
     hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
     h, s, v = cv2.split(hsv)
 
-    # Conversion avant les additions pour éviter les débordements uint8.
-    b, g, r = cv2.split(bgr.astype(np.int16))
-
     if color == "JAUNE":
-        mask = (
-            (h >= 12) & (h <= 45) &
-            (s >= 35) & (v >= 50) &
-            (r > b + 15) & (g > b + 10)
-        )
-
+        mask = (h >= 15) & (h <= 40) & (s >= 50) & (v >= 60)
     elif color == "VERT":
-        mask = (
-            (h >= 60) & (h <= 98) &
-            (s >= 60) & (v >= 40) &
-            (g > r + 20) & (b < 190)
-        )
-
+        # strict : le mélange jaune/bleu aux croisements et les ombres donnaient du « faux vert »
+        mask = (h >= 60) & (h <= 90) & (s >= 90) & (v >= 50)
     elif color == "BLEU":
-        mask = (
-            (h >= 99) & (h <= 135) &
-            (s >= 110) & (v >= 50) &
-            (b > r + 40) & (b > g + 15)
-        )
-
+        mask = (h >= 100) & (h <= 135) & (s >= 80) & (v >= 40)
     elif color == "ROUGE":
-        mask = (
-            ((h <= 12) | (h >= 155)) &
-            (s >= 50) & (v >= 40) &
-            (r > g + 25) & (r > b + 25)
-        )
-
+        # le rouge est aux deux bouts de la roue des teintes
+        mask = ((h <= 10) | (h >= 155)) & (s >= 60) & (v >= 50)
     else:
         return np.zeros(bgr.shape[:2], dtype=np.uint8)
 
@@ -47,308 +39,188 @@ def get_color_mask(bgr, color):
 
 
 def check_green_present(bgr):
-    """
-    Détecte la bande verte et vérifie qu'une autre couleur
-    de la piste est présente.
-
-    La détection repose sur la teinte et la saturation HSV,
-    sans utiliser directement la luminosité.
-    """
-
+    """True si une grosse tache verte est devant le robot ET qu'une ligne de couleur est visible."""
     h, w = bgr.shape[:2]
+    roi = bgr[int(h * 0.30):, :]                      # les 70 % du bas de l'image
 
-    roi = bgr[int(h * 0.30):, :]
+    green = get_color_mask(roi, "VERT")
+    green = cv2.morphologyEx(green, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))   # enlève le bruit
+    contours, _ = cv2.findContours(green, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    # Détection du vert
-    green_mask = get_color_mask(
-        roi,
-        "VERT"
-    )
-
-    kernel = np.ones(
-        (3, 3),
-        np.uint8
-    )
-
-    green_mask = cv2.morphologyEx(
-        green_mask,
-        cv2.MORPH_OPEN,
-        kernel
-    )
-
-    contours, _ = cv2.findContours(
-        green_mask,
-        cv2.RETR_EXTERNAL,
-        cv2.CHAIN_APPROX_SIMPLE
-    )
-
-    if not contours:
+    # le vrai marqueur est une grosse tache : on ignore les petites (bords de lignes, reflets)
+    min_area = int(400 * (w / 320.0) * (h / 240.0))
+    if not any(cv2.contourArea(c) >= min_area for c in contours):
         return False
 
-    min_area = int(
-        120
-        * (w / 320.0)
-        * (h / 240.0)
-    )
+    # le marqueur est sur la piste : une ligne de couleur doit être visible à côté
+    return any(np.count_nonzero(get_color_mask(roi, c)) >= 30 for c in ("ROUGE", "BLEU", "JAUNE"))
 
-    if not any(
-        cv2.contourArea(c) >= min_area
-        for c in contours
-    ):
-        return False
 
-    # Vérifie les autres couleurs uniquement
-    # avec leurs masques HSV.
-    red_mask = get_color_mask(
-        roi,
-        "ROUGE"
-    )
-
-    blue_mask = get_color_mask(
-        roi,
-        "BLEU"
-    )
-
-    yellow_mask = get_color_mask(
-        roi,
-        "JAUNE"
-    )
-
-    min_color_pixels = 30
-
-    has_red = (
-        np.count_nonzero(red_mask)
-        >= min_color_pixels
-    )
-
-    has_blue = (
-        np.count_nonzero(blue_mask)
-        >= min_color_pixels
-    )
-
-    has_yellow = (
-        np.count_nonzero(yellow_mask)
-        >= min_color_pixels
-    )
-
-    return (
-        has_red
-        or has_blue
-        or has_yellow
-    )
-
+# ------------------------------------------------------------------ suivi de ligne
 class LineFollower:
-    GREEN_COOLDOWN_SECONDS = 7.0
-    CORRIDOR_HALF_WIDTH = 45  # Demi-largeur du couloir de suivi axiale (px)
-    REQUIRED_GREEN_FRAMES = 5
+    GREEN_COOLDOWN_SECONDS = 7.0   # après un changement, on ignore le vert 7 s (le robot est encore dessus)
+    BOOST_SECONDS = 1.8            # après le vert, avancer tout droit pour trouver la nouvelle ligne
+    REQUIRED_GREEN_FRAMES = 5      # images de vert d'affilée pour valider le marqueur
+    CORRIDOR_HALF_WIDTH = 45       # couloir de ±45 px autour de la ligne suivie (ignore les croisements)
+    DEAD_ZONE = 3.0                # consigne < 3° : on va tout droit (évite le zigzag)
 
     def __init__(self, initial_target="VERT"):
-        self.seq_idx = 0  # 0: DEPART, 1: JAUNE, 2: BLEU, 3: ROUGE, 4: FIN
-        if initial_target == "JAUNE":
-            self.seq_idx = 1
-        elif initial_target == "BLEU":
-            self.seq_idx = 2
-        elif initial_target == "ROUGE":
-            self.seq_idx = 3
-
+        # "VERT" (ou autre) → DEPART : on attend le vert avant de partir sur JAUNE
+        self.seq_idx = {"JAUNE": 1, "BLEU": 2, "ROUGE": 3}.get(initial_target, 0)
         self.green_cooldown_until_sec = 0.0
         self.transition_boost_until_sec = 0.0
         self.green_consecutive_frames = 0
         self.last_consigne = 0.0
         self.current_angle = 0.0
-        self.tracked_line_x = None
-        self.last_turn_dir = 1.0      # si la ligne n'est pas vue au départ : on la cherche (au lieu de s'arrêter)
+        self.tracked_line_x = None     # position x (px) de la ligne suivie
+        self.last_turn_dir = 1.0       # côté où chercher la ligne si on la perd (+1 droite, −1 gauche)
         self.search_frames = 0
         self.max_search_frames = 90
         self.is_searching = False
 
     @property
     def current_target(self):
-        if self.seq_idx < len(PATH_ORDER):
-            return PATH_ORDER[self.seq_idx]
-        return "FIN"
+        return PATH_ORDER[self.seq_idx] if self.seq_idx < len(PATH_ORDER) else "FIN"
 
     @property
     def is_finished(self):
         return False
 
     def advance_to_next_target(self, current_time_sec=None):
+        """Couleur suivante : DEPART → JAUNE → BLEU → ROUGE → JAUNE …"""
         if current_time_sec is None:
             current_time_sec = time.time()
         prev = self.current_target
-        if self.seq_idx == 0:     # DEPART -> JAUNE
-            self.seq_idx = 1
-        elif self.seq_idx == 1:   # JAUNE -> BLEU
-            self.seq_idx = 2
-        elif self.seq_idx == 2:   # BLEU -> ROUGE
-            self.seq_idx = 3
-        else:                     # ROUGE -> Boucle sur JAUNE
-            self.seq_idx = 1
+        self.seq_idx = self.seq_idx + 1 if self.seq_idx < 3 else 1
 
         self.green_cooldown_until_sec = current_time_sec + self.GREEN_COOLDOWN_SECONDS
-        self.transition_boost_until_sec = current_time_sec + 1.8  # Avance 1-2 tours de roue (1.8s)
+        self.transition_boost_until_sec = current_time_sec + self.BOOST_SECONDS
         self.green_consecutive_frames = 0
         self.last_consigne = 0.0
         self.current_angle = 0.0
         self.tracked_line_x = None
-        # last_turn_dir gardé : si la nouvelle ligne n'est pas vue après la poussée, on la cherche
         self.search_frames = 0
         self.is_searching = False
-        print(f"\n[TRANSITION BOUCLE] {prev} -> {self.current_target} (Poussée avance 1.8s)")
+        # last_turn_dir est gardé : si la nouvelle ligne n'est pas vue, on la cherche au lieu de s'arrêter
+        print(f"\n[TRANSITION BOUCLE] {prev} -> {self.current_target} (Poussée avance {self.BOOST_SECONDS}s)")
 
     def cycle_target(self):
+        """Touche 'd' : couleur suivante à la main."""
         self.advance_to_next_target(time.time())
         return self.current_target
 
+    @staticmethod
+    def _consigne(cx, cy, w, h):
+        """Consigne (degrés, > 0 = tourner à droite) pour aller vers le point (cx, cy) de l'image."""
+        offset = float(cx - w / 2.0)                        # décalage horizontal, > 0 : ligne à droite
+        dy = max(h - cy, 10.0)                              # évite un angle de ±90° tout en bas de l'image
+        angle = float(np.degrees(np.arctan2(offset, dy)))   # direction de la ligne vue depuis le robot
+        consigne = float(np.clip(offset / (w / 2.0) * 30.0 + 0.6 * angle, -40.0, 40.0))
+        return offset, angle, consigne
+
     def process_frame(self, frame, current_time_sec=None):
+        """Renvoie (consigne en degrés, is_active, texte d'état)."""
         if current_time_sec is None:
             current_time_sec = time.time()
-
         h, w = frame.shape[:2]
-        target = self.current_target
-        base_x = int(w / 2.0)
-        base_y = int(h)
 
-        is_green_this_frame = check_green_present(frame)
-        if is_green_this_frame:
+        # 1. compter les images de vert d'affilée
+        if check_green_present(frame):
             self.green_consecutive_frames += 1
         else:
             self.green_consecutive_frames = 0
+        vert_confirme = self.green_consecutive_frames >= self.REQUIRED_GREEN_FRAMES
 
-        if target == "DEPART":
-            if self.green_consecutive_frames >= self.REQUIRED_GREEN_FRAMES:
+        # 2. départ : on attend le vert sans bouger
+        if self.current_target == "DEPART":
+            if vert_confirme:
                 self.advance_to_next_target(current_time_sec)
+            else:
+                return 0.0, False, (f"[DEPART] En attente du vert "
+                                    f"({self.green_consecutive_frames}/{self.REQUIRED_GREEN_FRAMES})...")
 
-            target = self.current_target
-            if target == "DEPART":
-                return 0.0, False, f"[DEPART] En attente du vert ({self.green_consecutive_frames}/{self.REQUIRED_GREEN_FRAMES})..."
-
-        # pour la transi verte
-        if current_time_sec >= self.green_cooldown_until_sec:
-            if self.green_consecutive_frames >= self.REQUIRED_GREEN_FRAMES:
-                self.advance_to_next_target(current_time_sec)
+        # 3. marqueur vert (après le cooldown) → couleur suivante
+        elif current_time_sec >= self.green_cooldown_until_sec and vert_confirme:
+            self.advance_to_next_target(current_time_sec)
 
         target = self.current_target
         if target == "FIN":
             return 0.0, False, "[FIN] Parcours terminé"
 
-        # masque binaire de la couleur active
+        # 4. masque de la couleur suivie
         mask = get_color_mask(frame, target)
-        kernel = np.ones((3, 3), np.uint8)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
 
-        # detection de la ligne
+        # 5. première détection : le morceau de ligne le plus proche du milieu de l'image
         if self.tracked_line_x is None:
-            init_roi = mask[int(0.20 * h):int(0.95 * h), :]
-            conts, _ = cv2.findContours(init_roi, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            roi = mask[int(0.20 * h):int(0.95 * h), :]
+            conts, _ = cv2.findContours(roi, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             valid = [c for c in conts if cv2.contourArea(c) >= 120]
             if valid:
-                valid.sort(key=lambda c: abs((cv2.boundingRect(c)[0] + cv2.boundingRect(c)[2] // 2) - base_x))
-                x, y_box, bw, bh = cv2.boundingRect(valid[0])
+                x, _, bw, _ = cv2.boundingRect(min(valid, key=lambda c: abs(
+                    cv2.boundingRect(c)[0] + cv2.boundingRect(c)[2] // 2 - w // 2)))
                 self.tracked_line_x = x + bw // 2
 
         chosen = None
-        is_straight_continuation = False
-
+        mode = ""
         if self.tracked_line_x is not None:
-            #test pour si la ligne boucle sur elle meme
-            corr_x1 = max(0, self.tracked_line_x - self.CORRIDOR_HALF_WIDTH)
-            corr_x2 = min(w, self.tracked_line_x + self.CORRIDOR_HALF_WIDTH)
-            corridor_ahead = mask[int(0.15 * h):int(0.90 * h), corr_x1:corr_x2]
-            ahead_pixel_count = np.count_nonzero(corridor_ahead)
+            x1 = max(0, self.tracked_line_x - self.CORRIDOR_HALF_WIDTH)
+            x2 = min(w, self.tracked_line_x + self.CORRIDOR_HALF_WIDTH)
 
-            y_look = int(0.50 * h)
-            look_strip = mask[
-                max(0, y_look - 20):min(h, y_look + 20),
-                corr_x1:corr_x2
-            ]
-            pts = np.argwhere(look_strip > 0)
+            # 6a. LIGNE DROITE : la ligne continue dans le couloir → on la suit (ignore les croisements)
+            if np.count_nonzero(mask[int(0.15 * h):int(0.90 * h), x1:x2]) >= 150:
+                y_look = int(0.50 * h)
+                pts = np.argwhere(mask[max(0, y_look - 20):min(h, y_look + 20), x1:x2] > 0)
+                if len(pts):
+                    local_cx = int(np.mean(pts[:, 1])) + x1
+                    self.tracked_line_x = int(0.75 * local_cx + 0.25 * self.tracked_line_x)   # lissage
+                chosen = self._consigne(self.tracked_line_x, y_look, w, h)
+                mode = "LIGNE DROITE"
 
-            if ahead_pixel_count >= 150 and len(pts) > 0:
-                is_straight_continuation = True
-                local_cx = int(np.mean(pts[:, 1])) + corr_x1
-                self.tracked_line_x = int(
-                    0.75 * local_cx + 0.25 * self.tracked_line_x
-                )
-
-                target_cx = self.tracked_line_x
-                target_cy = y_look
-
-                offset = float(target_cx - base_x)
-                dx = target_cx - base_x
-                dy = max(base_y - target_cy, 10.0)
-                angle = float(np.degrees(np.arctan2(dx, dy)))
-
-                norm_offset = offset / (w / 2.0)
-                consigne = float(np.clip(norm_offset * 30.0 + 0.6 * angle, -40.0, 40.0))
-
-                chosen = {
-                    'cx': target_cx,
-                    'cy': target_cy,
-                    'offset': offset,
-                    'angle': angle,
-                    'consigne': consigne
-                }
-
+            # 6b. VIRAGE : on va vers le centre du plus grand morceau de ligne
             else:
-                # virage ou fin de ligne droite : plus grand contour visible
                 contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                 valid = [c for c in contours if cv2.contourArea(c) >= 200]
                 if valid:
-                    c_best = max(valid, key=cv2.contourArea)
-                    M = cv2.moments(c_best)
-                    if M['m00'] >= 10:
-                        win_cx = int(M['m10'] / M['m00'])
-                        win_cy = int(M['m01'] / M['m00'])
-                        dx = win_cx - base_x
-                        dy = max(base_y - win_cy, 10.0)
-                        win_ang = float(np.degrees(np.arctan2(dx, dy)))
-                        self.tracked_line_x = win_cx
-                        offset = float(win_cx - base_x)
-                        norm_offset = offset / (w / 2.0)
-                        consigne = float(np.clip(norm_offset * 30.0 + 0.6 * win_ang, -40.0, 40.0))
-                        chosen = {
-                            'cx': win_cx,
-                            'cy': win_cy,
-                            'offset': offset,
-                            'angle': win_ang,
-                            'consigne': consigne
-                        }
+                    M = cv2.moments(max(valid, key=cv2.contourArea))
+                    if M["m00"] >= 10:
+                        cx, cy = int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"])
+                        self.tracked_line_x = cx
+                        chosen = self._consigne(cx, cy, w, h)
+                        mode = "SUIVI"
 
+        # 7. ligne trouvée : on retient son côté, on lisse la consigne, zone morte
         if chosen is not None:
+            offset, angle, consigne = chosen
             self.search_frames = 0
             self.is_searching = False
-            if chosen['offset'] > 6.0:
+            if offset > 6.0:
                 self.last_turn_dir = 1.0
-            elif chosen['offset'] < -6.0:
+            elif offset < -6.0:
                 self.last_turn_dir = -1.0
+            self.current_angle = 0.75 * angle + 0.25 * self.current_angle
+            self.last_consigne = 0.70 * consigne + 0.30 * self.last_consigne
+            if abs(self.last_consigne) < self.DEAD_ZONE:
+                self.last_consigne = 0.0
+            return (self.last_consigne, True,
+                    f"[{target}:{mode}] Ang:{angle:+5.1f}° | Off:{offset:+5.1f}px | Cmd:{self.last_consigne:+5.1f}°")
 
-            self.current_angle = 0.75 * chosen['angle'] + 0.25 * self.current_angle
-            self.last_consigne = 0.70 * chosen['consigne'] + 0.30 * self.last_consigne
-            is_active = True
-            mode_str = "LIGNE DROITE" if is_straight_continuation else "SUIVI"
-            status_str = f"[{target}:{mode_str}] Ang:{chosen['angle']:+5.1f}° | Off:{chosen['offset']:+5.1f}px | Cmd:{self.last_consigne:+5.1f}°"
-
-        elif current_time_sec < self.transition_boost_until_sec:
-            # Avance tout droit (1-2 tours de roue) après le vert pour franchir la zone et trouver la ligne
+        # 8. ligne pas trouvée juste après le vert : tout droit
+        self.last_consigne = 0.0
+        if current_time_sec < self.transition_boost_until_sec:
             self.is_searching = False
-            is_active = True
-            self.last_consigne = 0.0
-            rem = self.transition_boost_until_sec - current_time_sec
-            status_str = f"[{target}:AVANCE 1-2 TOURS] Recherche ligne ({rem:.1f}s)..."
+            reste = self.transition_boost_until_sec - current_time_sec
+            return 0.0, True, f"[{target}:AVANCE] Recherche ligne ({reste:.1f}s)..."
 
-        elif self.last_turn_dir != 0.0 and self.search_frames < self.max_search_frames:
+        # 9. ligne perdue : on tourne du côté où elle était (90 images max)
+        if self.search_frames < self.max_search_frames:
             self.search_frames += 1
             self.is_searching = True
-            is_active = True
             self.last_consigne = self.last_turn_dir * 30.0
-            dir_name = "DROITE" if self.last_turn_dir > 0 else "GAUCHE"
-            status_str = f"[{target}] RECHERCHE {dir_name} ({self.search_frames}/{self.max_search_frames})"
+            cote = "DROITE" if self.last_turn_dir > 0 else "GAUCHE"
+            return (self.last_consigne, True,
+                    f"[{target}] RECHERCHE {cote} ({self.search_frames}/{self.max_search_frames})")
 
-        else:
-            self.is_searching = False
-            self.last_consigne = 0.0
-            is_active = False
-            status_str = f"[{target} PERDUE] Arrêt"
-
-        return self.last_consigne, is_active, status_str
+        # 10. toujours rien : arrêt
+        self.is_searching = False
+        return 0.0, False, f"[{target} PERDUE] Arrêt"

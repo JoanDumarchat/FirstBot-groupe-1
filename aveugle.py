@@ -28,9 +28,9 @@ def charger_points(fichier="parcours.json", couleur=None):
         lisse.append((sum(p[0] for p in voisins) / len(voisins),
                       sum(p[1] for p in voisins) / len(voisins)))
 
-    # 3. comme avant : un point tous les PAS cm, sans demi-tour
+    # 3. un point tous les PAS cm, sans demi-tour (points vus pendant une recherche)
     points = [(0.0, 0.0)]
-    direction = 0.0
+    direction = 0.0   # direction du robot au départ (degrés)
     for x, y in lisse:
         if math.dist(points[-1], (x, y)) < PAS:
             continue

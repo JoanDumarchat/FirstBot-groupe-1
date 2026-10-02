@@ -58,6 +58,7 @@ def challenge_line_following(robot):
     print(" - Touche 'd'        : CHANGER COULEUR FOCUS (Vert->Jaune->Bleu->Rouge)")
     print(" - Touches 'i' / 'k' : Vitesse fine (+0.2 / -0.2)")
     print(" - Touches 'u' / 'j' : Vitesse rapide (+1.0 / -1.0)")
+    print(" - Touches 'g' / 'h' : Gain des corrections (+0.1 / -0.1) : h si le robot oscille")
     print(" - Arrêt d'urgence   : Pressez Ctrl+C")
     print("="*65 + "\n")
 
@@ -141,6 +142,10 @@ def challenge_line_following(robot):
                     speed_factor = round(min(speed_factor + 1.0, 15.0), 2)
                 if 'j' in term_chars.lower():
                     speed_factor = round(max(speed_factor - 1.0, 0.2), 2)
+                if 'g' in term_chars.lower():
+                    driver.gain = round(driver.gain + 0.1, 2)          # corrections plus fortes
+                if 'h' in term_chars.lower():
+                    driver.gain = round(max(driver.gain - 0.1, 0.1), 2)  # corrections plus douces (moins d'oscillation)
 
             v_effective = v_base * speed_factor
 
@@ -151,7 +156,7 @@ def challenge_line_following(robot):
                 consigne, is_active, status_str = follower.process_frame(frame)
                 carte.enregistrer(frame, follower.current_target)   # --- CARTE --- detect_line + pixel_to_world
                 driver.drive_autonome(consigne, is_active, is_searching=follower.is_searching, v_effective=v_effective)
-                status_str += f" | Vit:{v_effective:.1f}cm/s (x{speed_factor:.1f})"
+                status_str += f" | Vit:{v_effective:.1f}cm/s (x{speed_factor:.1f}) | Gain:{driver.gain:.1f}"
 
             sys.stdout.write(f"\r{status_str}   ")
             sys.stdout.flush()
